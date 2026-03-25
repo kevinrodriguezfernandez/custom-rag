@@ -1,7 +1,16 @@
 # api/services/retriever.py
-"""Retriever service — queries Qdrant for relevant document chunks."""
+"""Retriever service — embed query, search Qdrant, return ranked chunks."""
 
-from shared.models import RetrievedChunk
+from openai import OpenAI
+from qdrant_client import QdrantClient
+
+from shared.config import (
+    OPENAI_API_KEY,
+    OPENAI_EMBEDDING_MODEL,
+    QDRANT_URL,
+    QDRANT_COLLECTION,
+)
+from shared.models import DocumentChunk, RetrievedChunk
 
 
 def retrieve(query: str, top_k: int = 5) -> list[RetrievedChunk]:
@@ -17,6 +26,34 @@ def retrieve(query: str, top_k: int = 5) -> list[RetrievedChunk]:
     Returns
     -------
     list[RetrievedChunk]
-        Ranked list of relevant chunks with scores.
+        Ranked list of relevant chunks with similarity scores, highest first.
     """
-    raise NotImplementedError("Retriever is not yet implemented.")
+    # 1. Embed the query
+    openai_client = OpenAI(api_key=OPENAI_API_KEY)
+    response = openai_client.embeddings.create(
+        model=OPENAI_EMBEDDING_MODEL,
+        input=[query],
+    )
+    query_vector = response.data[0].embedding
+
+    # 2. Search Qdrant
+    qdrant_client = QdrantClient(url=QDRANT_URL)
+    results = qdrant_client.search(
+        collection_name=QDRANT_COLLECTION,
+        query_vector=query_vector,
+        limit=top_k,
+        with_payload=True,
+    )
+
+    # 3. Reconstruct RetrievedChunk objects from Qdrant payloads
+    retrieved: list[RetrievedChunk] = []
+    for hit in results:
+        payload = hit.payload or {}
+        chunk = DocumentChunk(
+            chunk_id=str(hit.id),
+            document_id=payload.get("document_id", ""),
+            content=payload.get("content", ""),
+            metadata=payload.get("metadata", {}),
+        )
+        retrieved.append(RetrievedChunk(chunk=chunk, score=hit.score))
+    return retrieved

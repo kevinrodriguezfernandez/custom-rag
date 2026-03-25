@@ -13,6 +13,9 @@ if not OPENAI_API_KEY:
 OPENAI_EMBEDDING_MODEL: str = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
 OPENAI_CHAT_MODEL: str = os.getenv("OPENAI_CHAT_MODEL", "gpt-4o")
 
+# --- Anthropic (optional — only needed for Claude models) ---
+ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
+
 # --- Qdrant ---
 QDRANT_URL: str = os.getenv("QDRANT_URL", "http://localhost:6333")
 QDRANT_COLLECTION: str = os.getenv("QDRANT_COLLECTION", "documents")

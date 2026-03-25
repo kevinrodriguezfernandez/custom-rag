@@ -17,6 +17,8 @@ dependencies = [
     "langchain>=0.3.0",
     "langchain-openai>=0.3.0",
     "langchain-text-splitters>=0.3.0",
+    "anthropic>=0.86.0",
+    "pypdf>=6.9.2",
 ]
 
 [dependency-groups]
