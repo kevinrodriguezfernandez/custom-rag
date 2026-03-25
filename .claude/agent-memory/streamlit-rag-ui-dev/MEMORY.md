@@ -1,0 +1,1 @@
+- [UI layer — component map, session state, API contract, disk persistence](project_ui_layer.md) — full map of app/main.py; ChatRequest uses `query`/`top_k`, ChatResponse uses `answer`/`sources`

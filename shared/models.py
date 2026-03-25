@@ -5,6 +5,7 @@ Other modules import from here — they never define their own request/response
 or domain models.
 """
 
+from typing import Literal
 from pydantic import BaseModel, Field
 
 
@@ -29,6 +30,17 @@ class RetrievedChunk(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Conversation primitives
+# ---------------------------------------------------------------------------
+
+class ChatTurn(BaseModel):
+    """A single turn in a conversation history (user or assistant message)."""
+
+    role: Literal["user", "assistant"] = Field(..., description="Speaker role for this turn")
+    content: str = Field(..., description="Text content of the turn")
+
+
+# ---------------------------------------------------------------------------
 # API request / response models
 # ---------------------------------------------------------------------------
 
@@ -37,6 +49,11 @@ class ChatRequest(BaseModel):
 
     query: str = Field(..., min_length=1, description="User question")
     top_k: int = Field(default=5, ge=1, le=20, description="Number of chunks to retrieve")
+    model: str = Field(default="gpt-4o-mini", description="OpenAI model name to use for generation")
+    chat_history: list[ChatTurn] = Field(
+        default_factory=list,
+        description="Previous conversation turns, ordered oldest-first",
+    )
 
 
 class ChatResponse(BaseModel):
@@ -44,6 +61,7 @@ class ChatResponse(BaseModel):
 
     answer: str = Field(..., description="LLM-generated answer")
     sources: list[RetrievedChunk] = Field(default_factory=list, description="Chunks used to generate the answer")
+    model: str | None = Field(default=None, description="OpenAI model that produced the answer, echoed from the request")
 
 
 class IngestRequest(BaseModel):

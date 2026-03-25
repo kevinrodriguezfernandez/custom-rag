@@ -1,0 +1,11 @@
+# .dockerignore — Keep build context small and exclude secrets
+
+.venv/
+__pycache__/
+*.pyc
+.git/
+.env
+tests/
+.pytest_cache/
+.claude/
+*.egg-info/
