@@ -1,0 +1,2 @@
+- [Project scaffold](project_scaffold.md) -- initial monorepo skeleton with all modules, stubs, deps (2026-03-25)
+- [Models inventory](models_inventory.md) -- all Pydantic models in shared/models.py and their fields

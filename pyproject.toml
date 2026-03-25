@@ -1,0 +1,36 @@
+[project]
+name = "custom-rag"
+version = "0.1.0"
+description = "Custom RAG monorepo — ingestion, API, and Streamlit frontend"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.34.0",
+    "streamlit>=1.42.0",
+    "qdrant-client>=1.13.0",
+    "openai>=1.68.0",
+    "pydantic>=2.11.0",
+    "pydantic-settings>=2.8.0",
+    "python-dotenv>=1.1.0",
+    "python-multipart>=0.0.20",
+    "langchain>=0.3.0",
+    "langchain-openai>=0.3.0",
+    "langchain-text-splitters>=0.3.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.25.0",
+    "httpx>=0.28.0",
+]
+
+[tool.uv.workspace]
+members = [
+    "app",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

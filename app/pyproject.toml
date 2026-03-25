@@ -1,0 +1,6 @@
+[project]
+name = "app"
+version = "0.1.0"
+description = "Streamlit frontend for the Custom RAG system"
+requires-python = ">=3.12"
+dependencies = []
