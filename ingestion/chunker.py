@@ -1,6 +1,8 @@
 # ingestion/chunker.py
 """Text chunking — splits raw text into overlapping chunks for embedding."""
 
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
 from shared.models import DocumentChunk
 
 
@@ -11,6 +13,10 @@ def chunk_text(
     chunk_overlap: int = 64,
 ) -> list[DocumentChunk]:
     """Split *text* into chunks and return a list of ``DocumentChunk`` objects.
+
+    Uses RecursiveCharacterTextSplitter which tries to split on paragraph
+    boundaries first, then sentence boundaries, before falling back to
+    character-level splits.
 
     Parameters
     ----------
@@ -28,4 +34,17 @@ def chunk_text(
     list[DocumentChunk]
         Ordered list of chunks.
     """
-    raise NotImplementedError("Chunking is not yet implemented.")
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+    )
+    texts = splitter.split_text(text)
+    return [
+        DocumentChunk(
+            chunk_id=f"{document_id}-{i}",
+            document_id=document_id,
+            content=chunk_text,
+            metadata={"chunk_index": i},
+        )
+        for i, chunk_text in enumerate(texts)
+    ]
