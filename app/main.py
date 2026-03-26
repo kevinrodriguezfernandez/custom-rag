@@ -43,7 +43,7 @@ CHATS_DIR: Path = Path(__file__).resolve().parent.parent / "chats"
 CHATS_DIR.mkdir(exist_ok=True)
 
 AVAILABLE_MODELS: dict[str, list[str]] = {
-    "OpenAI": ["gpt-4o", "gpt-4o-mini", "gpt-3.5-turbo"],
+    "OpenAI": ["gpt-5.4", "gpt-5.4-mini", "gpt-5.2", "gpt-4o", "gpt-4o-mini", "gpt-3.5-turbo"],
     "Anthropic": ["claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5"],
     "Ollama": ["minimax-m2.7:cloud", "llama3.2", "llama3.1", "llama3", "mistral", "gemma2", "phi3", "codellama"],
 }
@@ -141,6 +141,7 @@ def call_chat_api(
     chat_history: list[dict[str, str]] | None = None,
     api_key: str | None = None,
     api_url: str | None = None,
+    chat_id: str | None = None,
 ) -> tuple[str, list[dict[str, Any]], str | None]:
     """POST to /chat/ and return (answer, sources, response_model).
 
@@ -165,6 +166,7 @@ def call_chat_api(
         "chat_history": chat_history or [],
         "api_key": api_key or None,
         "api_url": api_url or None,
+        "chat_id": chat_id or None,
     }
     with httpx.Client(timeout=60.0) as client:
         response = client.post(f"{API_URL}/chat/", json=payload)
@@ -176,9 +178,45 @@ def call_chat_api(
     return answer, sources, response_model
 
 
+def call_ingest_api(file_bytes: bytes, filename: str, document_id: str, chat_id: str = "") -> dict:
+    """POST a document to /ingest/ and return the IngestResponse dict."""
+    with httpx.Client(timeout=120.0) as client:
+        response = client.post(
+            f"{API_URL}/ingest/",
+            files={"file": (filename, file_bytes, "application/octet-stream")},
+            data={"document_id": document_id, "chat_id": chat_id},
+        )
+        response.raise_for_status()
+    return response.json()
+
+
 # ---------------------------------------------------------------------------
 # UI components
 # ---------------------------------------------------------------------------
+
+
+def render_upload_panel() -> None:
+    """Render the document upload section inside the sidebar."""
+    st.subheader("Upload Document")
+    uploaded = st.file_uploader(
+        "Choose a file",
+        type=["pdf", "txt", "md", "docx", "xlsx", "xls"],
+        key="_doc_uploader",
+    )
+    if uploaded:
+        default_id = Path(uploaded.name).stem
+        doc_id = st.text_input("Document ID", value=default_id, key="_doc_id")
+        if st.button("Ingest", use_container_width=True, key="_ingest_btn"):
+            with st.spinner(f"Ingesting {uploaded.name}..."):
+                try:
+                    result = call_ingest_api(uploaded.read(), uploaded.name, doc_id, chat_id=st.session_state.chat_id or "")
+                    st.success(f"Done — {result['chunks_created']} chunks created.")
+                except httpx.ConnectError:
+                    st.error("Cannot reach the API.")
+                except httpx.HTTPStatusError as exc:
+                    st.error(f"Ingest failed: {exc.response.text[:200]}")
+                except Exception as exc:
+                    st.error(f"Unexpected error: {exc}")
 
 
 def render_sidebar() -> None:
@@ -228,7 +266,7 @@ def render_sidebar() -> None:
         if selected_provider == "Ollama":
             st.session_state.provider_api_url = st.text_input(
                 "Ollama URL",
-                value=st.session_state.provider_api_url or "http://localhost:11434",
+                value=st.session_state.provider_api_url or "http://host.docker.internal:11434",
                 key="_ollama_url",
             )
             st.session_state.provider_api_key = ""
@@ -249,6 +287,11 @@ def render_sidebar() -> None:
         if st.button("+ New chat", use_container_width=True):
             _start_new_chat()
             st.rerun()
+
+        st.divider()
+
+        # --- Document upload ---
+        render_upload_panel()
 
         st.divider()
 
@@ -377,6 +420,7 @@ def _handle_user_input(user_input: str) -> None:
                     chat_history=list(st.session_state.messages[:-1]),
                     api_key=st.session_state.provider_api_key or None,
                     api_url=st.session_state.provider_api_url or None,
+                    chat_id=st.session_state.chat_id,
                 )
             except httpx.ConnectError:
                 st.error(

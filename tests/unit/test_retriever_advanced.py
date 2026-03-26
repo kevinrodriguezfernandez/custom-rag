@@ -1,11 +1,18 @@
 # tests/unit/test_retriever_advanced.py
 """Advanced unit tests for the retriever service."""
 
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import MagicMock, patch
 import pytest
 
 from api.services.retriever import retrieve
 from shared.models import DocumentChunk, RetrievedChunk
+
+
+def _mock_qdrant_response(points):
+    """Return a MagicMock that mimics query_points() response."""
+    mock_response = MagicMock()
+    mock_response.points = points
+    return mock_response
 
 
 class TestRetrieveAdvanced:
@@ -25,7 +32,7 @@ class TestRetrieveAdvanced:
 
             qdrant_instance = MagicMock()
             mock_qdrant.return_value = qdrant_instance
-            qdrant_instance.search.return_value = []
+            qdrant_instance.query_points.return_value = _mock_qdrant_response([])
 
             result = await retrieve("你好 مرحبا café", top_k=5)
 
@@ -50,7 +57,7 @@ class TestRetrieveAdvanced:
 
             qdrant_instance = MagicMock()
             mock_qdrant.return_value = qdrant_instance
-            qdrant_instance.search.return_value = []
+            qdrant_instance.query_points.return_value = _mock_qdrant_response([])
 
             result = await retrieve(long_query, top_k=5)
 
@@ -74,7 +81,7 @@ class TestRetrieveAdvanced:
 
             qdrant_instance = MagicMock()
             mock_qdrant.return_value = qdrant_instance
-            qdrant_instance.search.return_value = []
+            qdrant_instance.query_points.return_value = _mock_qdrant_response([])
 
             result = await retrieve(special_query, top_k=5)
 
@@ -111,7 +118,7 @@ class TestRetrieveAdvanced:
             mock_point = MagicMock()
             mock_point.payload = payload
             mock_point.score = 0.87
-            qdrant_instance.search.return_value = [mock_point]
+            qdrant_instance.query_points.return_value = _mock_qdrant_response([mock_point])
 
             result = await retrieve("Query", top_k=5)
 
@@ -137,17 +144,18 @@ class TestRetrieveAdvanced:
 
             qdrant_instance = MagicMock()
             mock_qdrant.return_value = qdrant_instance
-            qdrant_instance.search.return_value = []
+            qdrant_instance.query_points.return_value = _mock_qdrant_response([])
 
             # Test with top_k = 1 (minimum)
             await retrieve("Query", top_k=1)
-            call_kwargs = qdrant_instance.search.call_args.kwargs
+            call_kwargs = qdrant_instance.query_points.call_args.kwargs
             assert call_kwargs["limit"] == 1
 
             # Test with top_k = 100 (large)
             qdrant_instance.reset_mock()
+            qdrant_instance.query_points.return_value = _mock_qdrant_response([])
             await retrieve("Query", top_k=100)
-            call_kwargs = qdrant_instance.search.call_args.kwargs
+            call_kwargs = qdrant_instance.query_points.call_args.kwargs
             assert call_kwargs["limit"] == 100
 
     @pytest.mark.asyncio
@@ -178,7 +186,7 @@ class TestRetrieveAdvanced:
                 mock_point.score = score
                 mock_points.append(mock_point)
 
-            qdrant_instance.search.return_value = mock_points
+            qdrant_instance.query_points.return_value = _mock_qdrant_response(mock_points)
 
             result = await retrieve("Query", top_k=5)
 
@@ -212,7 +220,7 @@ class TestRetrieveAdvanced:
             mock_point = MagicMock()
             mock_point.payload = payload
             mock_point.score = 0.95
-            qdrant_instance.search.return_value = [mock_point]
+            qdrant_instance.query_points.return_value = _mock_qdrant_response([mock_point])
 
             result = await retrieve("Query", top_k=5)
 
@@ -236,13 +244,13 @@ class TestRetrieveAdvanced:
 
             qdrant_instance = MagicMock()
             mock_qdrant.return_value = qdrant_instance
-            qdrant_instance.search.return_value = []
+            qdrant_instance.query_points.return_value = _mock_qdrant_response([])
 
             await retrieve("Query", top_k=5)
 
-            # Verify the exact vector was passed to search
-            call_kwargs = qdrant_instance.search.call_args.kwargs
-            assert call_kwargs["query_vector"] == distinctive_vector
+            # Verify the exact vector was passed to query_points
+            call_kwargs = qdrant_instance.query_points.call_args.kwargs
+            assert call_kwargs["query"] == distinctive_vector
 
     @pytest.mark.asyncio
     async def test_retrieve_constructs_retrieved_chunks_correctly(self) -> None:
@@ -267,7 +275,7 @@ class TestRetrieveAdvanced:
                 "metadata": {}
             }
             mock_point.score = 0.95
-            qdrant_instance.search.return_value = [mock_point]
+            qdrant_instance.query_points.return_value = _mock_qdrant_response([mock_point])
 
             result = await retrieve("Query", top_k=5)
 

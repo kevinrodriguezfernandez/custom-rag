@@ -1,21 +1,13 @@
 # tests/integration/test_chat_endpoint.py
 """Integration tests for the /chat endpoint."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
 from api.main import app
 from shared.models import DocumentChunk, RetrievedChunk
-
-
-@pytest.fixture
-def async_client():
-    """Return an async test client for FastAPI."""
-    from httpx import AsyncClient
-
-    return AsyncClient(app=app, base_url="http://test")
 
 
 class TestChatEndpointBasic:
@@ -147,18 +139,21 @@ class TestChatEndpointValidation:
 class TestChatEndpointErrorHandling:
     """Tests for error handling in chat endpoint."""
 
-    def test_chat_endpoint_retrieval_failure_returns_502(self, client) -> None:
-        """POST /chat/ returns 502 if retrieval fails."""
+    def test_chat_endpoint_retrieval_failure_continues_without_context(self, client) -> None:
+        """POST /chat/ continues with empty chunks if retrieval fails."""
         request = {"query": "Test?", "top_k": 5}
 
-        with patch("api.routes.chat.retrieve") as mock_retrieve:
+        with patch("api.routes.chat.retrieve") as mock_retrieve, patch(
+            "api.routes.chat.generate_answer"
+        ) as mock_generate:
             mock_retrieve.side_effect = Exception("Qdrant unavailable")
+            mock_generate.return_value = "Answer without context"
 
             response = client.post("/chat/", json=request)
 
-            assert response.status_code == 502
+            assert response.status_code == 200
             data = response.json()
-            assert "Retrieval failed" in data.get("detail", "")
+            assert data["sources"] == []
 
     def test_chat_endpoint_llm_failure_returns_502(self, client) -> None:
         """POST /chat/ returns 502 if LLM generation fails."""

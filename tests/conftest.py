@@ -1,8 +1,7 @@
 # tests/conftest.py
 """Shared pytest fixtures for the entire test suite."""
 
-import asyncio
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -114,31 +113,3 @@ def mock_anthropic_client() -> MagicMock:
     return client
 
 
-@pytest.fixture()
-def mock_qdrant_client() -> MagicMock:
-    """Mock Qdrant client with in-memory behavior."""
-    client = MagicMock()
-
-    # Mock get_collections
-    mock_collection = MagicMock()
-    mock_collection.name = "documents"
-    client.get_collections.return_value.collections = [mock_collection]
-
-    # Mock search results
-    def mock_search(collection_name, query_vector, limit, with_payload=False):
-        # Return a mock search result
-        mock_point = MagicMock()
-        mock_point.payload = {
-            "chunk_id": "doc-1-0",
-            "document_id": "doc-1",
-            "content": "Sample retrieved chunk.",
-            "metadata": {"page": 1},
-        }
-        mock_point.score = 0.95
-        return [mock_point]
-
-    client.search.side_effect = mock_search
-    client.upsert.return_value = None
-    client.create_collection.return_value = None
-
-    return client

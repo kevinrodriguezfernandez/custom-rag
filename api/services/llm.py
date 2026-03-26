@@ -2,12 +2,15 @@
 """LLM service — builds a prompt from retrieved context and calls the chat model."""
 
 import asyncio
+import logging
 
 import anthropic
 import openai
 
 from shared.config import ANTHROPIC_API_KEY, OLLAMA_URL, OPENAI_API_KEY
 from shared.models import ChatTurn, RetrievedChunk
+
+logger = logging.getLogger(__name__)
 
 # Models that are served locally via Ollama
 _KNOWN_OLLAMA_MODELS = {
@@ -30,20 +33,22 @@ _KNOWN_OLLAMA_MODELS = {
 
 
 def _build_system_prompt(context_chunks: list[RetrievedChunk]) -> str:
-    """Construct the system prompt that injects retrieved context."""
+    """Construct the system prompt, injecting retrieved context when available."""
     if not context_chunks:
-        context_text = "No relevant context was found in the knowledge base."
-    else:
-        sections = []
-        for i, rc in enumerate(context_chunks, start=1):
-            sections.append(f"[{i}] {rc.chunk.content}")
-        context_text = "\n\n".join(sections)
+        return (
+            "You are a helpful, knowledgeable assistant. "
+            "Answer the user's question thoroughly and accurately using your own knowledge."
+        )
+
+    sections = [f"[{i}] {rc.chunk.content}" for i, rc in enumerate(context_chunks, start=1)]
+    context_text = "\n\n".join(sections)
 
     return (
-        "You are a helpful assistant. Answer the user's question using only the "
-        "context below. If the context does not contain enough information to answer, "
-        "say so clearly.\n\n"
-        f"Context:\n{context_text}"
+        "You are a helpful, knowledgeable assistant. "
+        "Use the document context below to ground your answer with specific information from the user's documents. "
+        "You may also draw on your own knowledge to provide complete, accurate responses. "
+        "Always prioritise information from the context when it is relevant.\n\n"
+        f"Document context:\n{context_text}"
     )
 
 
@@ -93,10 +98,20 @@ async def generate_answer(
         The LLM-generated answer.
     """
     system_prompt = _build_system_prompt(context_chunks)
+    messages = _build_messages(query, system_prompt, chat_history)
+    logger.debug(
+        "Prompt built — system_prompt_length=%d message_count=%d",
+        len(system_prompt),
+        len(messages),
+    )
     loop = asyncio.get_event_loop()
 
     # --- Provider routing ---
     if model.startswith("claude-"):
+        effective_key = api_key or ANTHROPIC_API_KEY
+        if not effective_key:
+            logger.warning("Anthropic API key is empty — request will likely fail")
+        logger.info("Provider selected — provider=anthropic model=%s", model)
         return await loop.run_in_executor(
             None,
             _call_anthropic,
@@ -104,7 +119,7 @@ async def generate_answer(
             system_prompt,
             chat_history,
             model,
-            api_key or ANTHROPIC_API_KEY,
+            effective_key,
         )
 
     is_known_ollama = model in _KNOWN_OLLAMA_MODELS
@@ -112,6 +127,7 @@ async def generate_answer(
     use_ollama = is_known_ollama or (OLLAMA_URL and is_not_openai)
 
     if use_ollama:
+        logger.info("Provider selected — provider=ollama model=%s", model)
         effective_url = f"{api_url.rstrip('/')}/v1" if api_url else f"{OLLAMA_URL}/v1"
         return await loop.run_in_executor(
             None,
@@ -125,6 +141,10 @@ async def generate_answer(
         )
 
     # Default: OpenAI
+    effective_key = api_key or OPENAI_API_KEY
+    if not effective_key:
+        logger.warning("OpenAI API key is empty — request will likely fail")
+    logger.info("Provider selected — provider=openai model=%s", model)
     return await loop.run_in_executor(
         None,
         _call_openai_compat,
@@ -133,7 +153,7 @@ async def generate_answer(
         chat_history,
         model,
         None,
-        api_key or OPENAI_API_KEY,
+        effective_key,
     )
 
 

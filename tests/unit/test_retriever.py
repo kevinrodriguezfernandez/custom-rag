@@ -1,12 +1,19 @@
 # tests/unit/test_retriever.py
 """Unit tests for the retriever service."""
 
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from api.services.retriever import retrieve
 from shared.models import DocumentChunk, RetrievedChunk
+
+
+def _mock_qdrant_response(points):
+    """Return a MagicMock that mimics query_points() response."""
+    mock_response = MagicMock()
+    mock_response.points = points
+    return mock_response
 
 
 class TestRetrieveBasic:
@@ -36,7 +43,7 @@ class TestRetrieveBasic:
                 "metadata": {},
             }
             mock_point.score = 0.95
-            qdrant_instance.search.return_value = [mock_point]
+            qdrant_instance.query_points.return_value = _mock_qdrant_response([mock_point])
 
             result = await retrieve("Test query", top_k=5)
 
@@ -59,7 +66,7 @@ class TestRetrieveBasic:
 
             qdrant_instance = MagicMock()
             mock_qdrant.return_value = qdrant_instance
-            qdrant_instance.search.return_value = []
+            qdrant_instance.query_points.return_value = _mock_qdrant_response([])
 
             await retrieve("Test query", top_k=5)
 
@@ -83,14 +90,14 @@ class TestRetrieveBasic:
 
             qdrant_instance = MagicMock()
             mock_qdrant.return_value = qdrant_instance
-            qdrant_instance.search.return_value = []
+            qdrant_instance.query_points.return_value = _mock_qdrant_response([])
 
             await retrieve("Test query", top_k=10)
 
-            # Verify Qdrant search was called
-            qdrant_instance.search.assert_called_once()
-            call_kwargs = qdrant_instance.search.call_args.kwargs
-            assert call_kwargs.get("query_vector") == test_vector
+            # Verify Qdrant query_points was called
+            qdrant_instance.query_points.assert_called_once()
+            call_kwargs = qdrant_instance.query_points.call_args.kwargs
+            assert call_kwargs.get("query") == test_vector
             assert call_kwargs.get("limit") == 10
 
     @pytest.mark.asyncio
@@ -107,11 +114,11 @@ class TestRetrieveBasic:
 
             qdrant_instance = MagicMock()
             mock_qdrant.return_value = qdrant_instance
-            qdrant_instance.search.return_value = []
+            qdrant_instance.query_points.return_value = _mock_qdrant_response([])
 
             await retrieve("Query", top_k=20)
 
-            call_kwargs = qdrant_instance.search.call_args.kwargs
+            call_kwargs = qdrant_instance.query_points.call_args.kwargs
             assert call_kwargs.get("limit") == 20
 
 
@@ -132,7 +139,7 @@ class TestRetrieveEdgeCases:
 
             qdrant_instance = MagicMock()
             mock_qdrant.return_value = qdrant_instance
-            qdrant_instance.search.return_value = []  # No results
+            qdrant_instance.query_points.return_value = _mock_qdrant_response([])
 
             result = await retrieve("Obscure query", top_k=5)
 
@@ -166,7 +173,7 @@ class TestRetrieveEdgeCases:
                 mock_point.score = 0.9 - (i * 0.05)  # Decreasing scores
                 mock_points.append(mock_point)
 
-            qdrant_instance.search.return_value = mock_points
+            qdrant_instance.query_points.return_value = _mock_qdrant_response(mock_points)
 
             result = await retrieve("Query", top_k=5)
 
@@ -198,7 +205,7 @@ class TestRetrieveEdgeCases:
                 "metadata": {},
             }
             mock_point.score = 0.1  # Very low score
-            qdrant_instance.search.return_value = [mock_point]
+            qdrant_instance.query_points.return_value = _mock_qdrant_response([mock_point])
 
             result = await retrieve("Query", top_k=1)
 
@@ -217,6 +224,9 @@ class TestRetrieveConfiguration:
         ) as mock_qdrant, patch(
             "api.services.retriever.OPENAI_EMBEDDING_MODEL",
             "text-embedding-3-small",
+        ), patch(
+            "api.services.retriever.EMBEDDING_PROVIDER",
+            "openai",
         ):
             oai_instance = MagicMock()
             mock_openai.return_value = oai_instance
@@ -226,7 +236,7 @@ class TestRetrieveConfiguration:
 
             qdrant_instance = MagicMock()
             mock_qdrant.return_value = qdrant_instance
-            qdrant_instance.search.return_value = []
+            qdrant_instance.query_points.return_value = _mock_qdrant_response([])
 
             await retrieve("Query", top_k=5)
 
@@ -249,11 +259,11 @@ class TestRetrieveConfiguration:
 
             qdrant_instance = MagicMock()
             mock_qdrant.return_value = qdrant_instance
-            qdrant_instance.search.return_value = []
+            qdrant_instance.query_points.return_value = _mock_qdrant_response([])
 
             await retrieve("Query", top_k=5)
 
-            call_kwargs = qdrant_instance.search.call_args.kwargs
+            call_kwargs = qdrant_instance.query_points.call_args.kwargs
             assert call_kwargs.get("collection_name") == "my-documents"
 
 
@@ -284,7 +294,7 @@ class TestRetrieveChunkIntegrity:
                 "metadata": {"source": "user_upload"},
             }
             mock_point.score = 0.95
-            qdrant_instance.search.return_value = [mock_point]
+            qdrant_instance.query_points.return_value = _mock_qdrant_response([mock_point])
 
             result = await retrieve("Query", top_k=5)
 
@@ -314,7 +324,7 @@ class TestRetrieveChunkIntegrity:
                 "metadata": metadata,
             }
             mock_point.score = 0.95
-            qdrant_instance.search.return_value = [mock_point]
+            qdrant_instance.query_points.return_value = _mock_qdrant_response([mock_point])
 
             result = await retrieve("Query", top_k=5)
 
