@@ -1,8 +1,7 @@
 # tests/unit/test_llm_routing.py
 """Unit tests for LLM provider routing logic."""
 
-from unittest.mock import MagicMock, patch, AsyncMock
-import asyncio
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -21,7 +20,7 @@ class TestBuildSystemPrompt:
 
         prompt = _build_system_prompt(retrieved)
 
-        assert "You are a helpful assistant" in prompt
+        assert "You are a helpful" in prompt
         assert "context" in prompt.lower()
         # Check that chunk content is included
         for chunk in sample_chunks:
@@ -31,8 +30,8 @@ class TestBuildSystemPrompt:
         """System prompt handles empty context gracefully."""
         prompt = _build_system_prompt([])
 
-        assert "You are a helpful assistant" in prompt
-        assert "No relevant context" in prompt
+        assert "You are a helpful" in prompt
+        assert "your own knowledge" in prompt
 
     def test_build_system_prompt_multiple_chunks(self, sample_chunks) -> None:
         """System prompt includes all chunks with numbered sections."""

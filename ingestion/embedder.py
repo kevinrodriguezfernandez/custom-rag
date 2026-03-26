@@ -1,6 +1,8 @@
 # ingestion/embedder.py
 """Embedding pipeline — converts text chunks into vectors and upserts to Qdrant."""
 
+import logging
+
 import openai
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, PointStruct, VectorParams
@@ -16,6 +18,8 @@ from shared.config import (
     VECTOR_SIZE,
 )
 from shared.models import DocumentChunk
+
+logger = logging.getLogger(__name__)
 
 
 def _embedding_client() -> tuple[openai.OpenAI, str]:
@@ -44,6 +48,7 @@ def embed_chunks(chunks: list[DocumentChunk]) -> list[list[float]]:
         A list of embedding vectors, one per chunk, in the same order.
     """
     client, model = _embedding_client()
+    logger.info("Embedding chunks — chunk_count=%d provider=%s", len(chunks), EMBEDDING_PROVIDER)
     response = client.embeddings.create(
         model=model,
         input=[c.content for c in chunks],
@@ -88,4 +93,5 @@ def upsert_to_store(chunks: list[DocumentChunk], vectors: list[list[float]]) -> 
     ]
 
     qdrant.upsert(collection_name=QDRANT_COLLECTION, points=points)
+    logger.info("Upsert complete — upserted_count=%d collection=%s", len(points), QDRANT_COLLECTION)
     return len(points)

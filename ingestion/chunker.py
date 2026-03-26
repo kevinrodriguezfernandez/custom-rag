@@ -1,9 +1,13 @@
 # ingestion/chunker.py
 """Text chunking — splits raw text into overlapping chunks for embedding."""
 
+import logging
+
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from shared.models import DocumentChunk
+
+logger = logging.getLogger(__name__)
 
 
 def chunk_text(
@@ -11,6 +15,7 @@ def chunk_text(
     document_id: str,
     chunk_size: int = 512,
     chunk_overlap: int = 64,
+    chat_id: str = "",
 ) -> list[DocumentChunk]:
     """Split *text* into chunks and return a list of ``DocumentChunk`` objects.
 
@@ -34,17 +39,20 @@ def chunk_text(
     list[DocumentChunk]
         Ordered list of chunks.
     """
+    logger.info("Chunking text — input_length=%d", len(text))
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
     )
     texts = splitter.split_text(text)
-    return [
+    chunks = [
         DocumentChunk(
             chunk_id=f"{document_id}-{i}",
             document_id=document_id,
             content=chunk_text,
-            metadata={"chunk_index": i},
+            metadata={"chunk_index": i, "chat_id": chat_id},
         )
         for i, chunk_text in enumerate(texts)
     ]
+    logger.info("Chunking complete — chunk_count=%d", len(chunks))
+    return chunks

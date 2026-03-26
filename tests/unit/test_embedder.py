@@ -67,6 +67,8 @@ class TestEmbedChunks:
             "ingestion.embedder.openai.OpenAI"
         ) as mock_openai, patch(
             "ingestion.embedder.OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"
+        ), patch(
+            "ingestion.embedder.EMBEDDING_PROVIDER", "openai"
         ):
             client_instance = MagicMock()
             mock_openai.return_value = client_instance

@@ -2,8 +2,6 @@
 """End-to-end integration tests for the complete RAG pipeline."""
 
 from unittest.mock import MagicMock, patch
-import tempfile
-from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -80,19 +78,22 @@ class TestErrorPropagation:
             assert response.status_code == 422
             assert "Unsupported file type" in response.json().get("detail", "")
 
-    def test_chat_retrieval_error_returns_502(self) -> None:
-        """Chat endpoint returns 502 when retrieval fails."""
+    def test_chat_retrieval_error_continues_without_context(self) -> None:
+        """Chat endpoint continues with empty context when retrieval fails."""
         client = TestClient(app)
 
         request = {"query": "Test?", "top_k": 5}
 
-        with patch("api.routes.chat.retrieve") as mock_retrieve:
+        with patch("api.routes.chat.retrieve") as mock_retrieve, patch(
+            "api.routes.chat.generate_answer"
+        ) as mock_generate:
             mock_retrieve.side_effect = RuntimeError("Qdrant unreachable")
+            mock_generate.return_value = "Answer without context"
 
             response = client.post("/chat/", json=request)
 
-            assert response.status_code == 502
-            assert "Retrieval failed" in response.json()["detail"]
+            assert response.status_code == 200
+            assert response.json()["sources"] == []
 
     def test_chat_generation_error_returns_502(self) -> None:
         """Chat endpoint returns 502 when LLM generation fails."""

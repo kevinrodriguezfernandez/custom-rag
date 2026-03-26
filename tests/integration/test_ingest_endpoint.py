@@ -1,10 +1,7 @@
 # tests/integration/test_ingest_endpoint.py
 """Integration tests for the /ingest endpoint."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
-from io import BytesIO
-import tempfile
-from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient

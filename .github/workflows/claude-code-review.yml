@@ -5,8 +5,56 @@ on:
     types: [opened, synchronize, ready_for_review, reopened]
 
 jobs:
-  claude-review:
+  pytest:
+    name: pytest + coverage
     runs-on: ubuntu-latest
+    outputs:
+      coverage_report: ${{ steps.coverage.outputs.report }}
+      tests_passed: ${{ steps.coverage.outputs.passed }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Run pytest with coverage
+        id: coverage
+        run: |
+          set +e
+          uv run pytest \
+            --cov=api \
+            --cov=ingestion \
+            --cov=shared \
+            --cov-report=term-missing \
+            --tb=short \
+            -q 2>&1 | tee pytest_output.txt
+          EXIT_CODE=$?
+          set -e
+
+          if [ $EXIT_CODE -eq 0 ]; then
+            echo "passed=true" >> $GITHUB_OUTPUT
+          else
+            echo "passed=false" >> $GITHUB_OUTPUT
+          fi
+
+          echo "report<<EOF" >> $GITHUB_OUTPUT
+          cat pytest_output.txt >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+  claude-review:
+    name: Claude Code Review
+    runs-on: ubuntu-latest
+    needs: pytest
     permissions:
       contents: read
       pull-requests: write
@@ -16,8 +64,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -50,6 +96,14 @@ jobs:
           direct_prompt: |
             You are a senior software engineer performing a thorough code review.
 
+            ## Test Results
+
+            **Tests passed:** ${{ needs.pytest.outputs.tests_passed }}
+
+            ```
+            ${{ needs.pytest.outputs.coverage_report }}
+            ```
+
             ## Linter Results
 
             ### flake8
@@ -62,14 +116,14 @@ jobs:
 
             ## Review Checklist
 
-            Use the linter output above as context, then review the PR diff for:
+            Use the test results, coverage report, and linter output above as context, then review the PR diff for:
 
             1. **Correctness** – Does the logic work as intended? Edge cases or bugs?
             2. **Code quality** – Readable, well-structured, consistent with the codebase?
-            3. **Linter violations** – Flag any issues from flake8/pylint that are non-trivial or indicate real problems. Skip pure style noise.
-            4. **Security** – Injection risks, exposed secrets, unsafe inputs, auth issues?
-            5. **Performance** – Obvious inefficiencies, unnecessary computation?
-            6. **Tests** – Are changes covered? Are existing tests still valid?
+            3. **Test coverage** – Are new/changed code paths covered? Flag any gaps in coverage shown above.
+            4. **Linter violations** – Flag any issues from flake8/pylint that are non-trivial or indicate real problems. Skip pure style noise.
+            5. **Security** – Injection risks, exposed secrets, unsafe inputs, auth issues?
+            6. **Performance** – Obvious inefficiencies, unnecessary computation?
             7. **Breaking changes** – Does this break existing interfaces or contracts?
 
             Be direct and specific. Point to exact lines when possible.

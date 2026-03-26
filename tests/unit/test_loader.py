@@ -112,8 +112,8 @@ class TestLoadDocumentErrors:
 
     def test_unsupported_extension_raises_value_error(self) -> None:
         """Loading an unsupported file type raises ValueError."""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".docx", delete=False) as f:
-            f.write("This file type is not supported.")
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+            f.write("col1,col2\nval1,val2")
             f.flush()
             temp_path = f.name
 

@@ -56,6 +56,7 @@ class ChatRequest(BaseModel):
     )
     api_key: str | None = Field(default=None, description="Provider API key (overrides env var)")
     api_url: str | None = Field(default=None, description="Provider base URL override (used for Ollama)")
+    chat_id: str | None = Field(default=None, description="Active chat session ID for document scoping")
 
 
 class ChatResponse(BaseModel):
