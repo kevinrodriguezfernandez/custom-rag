@@ -16,6 +16,10 @@ def chunk_text(
 ) -> list[DocumentChunk]:
     """Split *text* into chunks and return a list of ``DocumentChunk`` objects.
 
+    Uses RecursiveCharacterTextSplitter which tries to split on paragraph
+    boundaries first, then sentence boundaries, before falling back to
+    character-level splits.
+
     Parameters
     ----------
     text:

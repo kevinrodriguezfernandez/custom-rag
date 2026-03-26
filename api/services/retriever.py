@@ -12,9 +12,37 @@ from shared.config import (
 )
 from shared.models import DocumentChunk, RetrievedChunk
 
+import openai
+from qdrant_client import QdrantClient
 
-def retrieve(query: str, top_k: int = 5) -> list[RetrievedChunk]:
+from shared.config import (
+    EMBEDDING_PROVIDER,
+    OLLAMA_EMBEDDING_MODEL,
+    OLLAMA_URL,
+    OPENAI_API_KEY,
+    OPENAI_EMBEDDING_MODEL,
+    QDRANT_COLLECTION,
+    QDRANT_URL,
+)
+from shared.models import DocumentChunk, RetrievedChunk
+
+
+def _embedding_client() -> tuple[openai.OpenAI, str]:
+    """Return (client, model) for the configured embedding provider."""
+    if EMBEDDING_PROVIDER == "ollama":
+        return (
+            openai.OpenAI(base_url=f"{OLLAMA_URL}/v1", api_key="ollama"),
+            OLLAMA_EMBEDDING_MODEL,
+        )
+    return openai.OpenAI(api_key=OPENAI_API_KEY), OPENAI_EMBEDDING_MODEL
+
+
+async def retrieve(query: str, top_k: int = 5) -> list[RetrievedChunk]:
     """Embed *query* and return the top-k most relevant chunks from the vector store.
+
+    Embeds the query using the configured embedding provider (OpenAI or Ollama),
+    then performs a vector similarity search against the Qdrant collection.
+    Both calls run in a thread pool to avoid blocking the event loop.
 
     Parameters
     ----------

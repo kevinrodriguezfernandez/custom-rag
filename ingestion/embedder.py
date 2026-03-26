@@ -11,8 +11,20 @@ from shared.models import DocumentChunk
 VECTOR_SIZE = 1536  # text-embedding-3-small output dimension
 
 
+def _embedding_client() -> tuple[openai.OpenAI, str]:
+    """Return (client, model) for the configured embedding provider."""
+    if EMBEDDING_PROVIDER == "ollama":
+        return (
+            openai.OpenAI(base_url=f"{OLLAMA_URL}/v1", api_key="ollama"),
+            OLLAMA_EMBEDDING_MODEL,
+        )
+    return openai.OpenAI(api_key=OPENAI_API_KEY), OPENAI_EMBEDDING_MODEL
+
+
 def embed_chunks(chunks: list[DocumentChunk]) -> list[list[float]]:
     """Generate embedding vectors for a list of document chunks.
+
+    Uses the configured embedding provider (OpenAI or Ollama).
 
     Parameters
     ----------
@@ -32,6 +44,9 @@ def embed_chunks(chunks: list[DocumentChunk]) -> list[list[float]]:
 
 def upsert_to_store(chunks: list[DocumentChunk], vectors: list[list[float]]) -> int:
     """Upsert chunk vectors into the Qdrant vector store.
+
+    Creates the collection if it does not already exist (Cosine distance,
+    1536-dimensional vectors for text-embedding-3-small).
 
     Parameters
     ----------

@@ -8,8 +8,6 @@ load_dotenv()
 
 # --- OpenAI / LLM ---
 OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY") or ""
-if not OPENAI_API_KEY:
-    raise ValueError("OPENAI_API_KEY must be set in environment")
 OPENAI_EMBEDDING_MODEL: str = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
 OPENAI_CHAT_MODEL: str = os.getenv("OPENAI_CHAT_MODEL", "gpt-4o")
 
@@ -33,3 +31,9 @@ except ValueError as exc:
 # Named API_URL to match the env var that app/main.py reads ("API_URL").
 # Both this module and app/main.py default to http://localhost:8000.
 API_URL: str = os.getenv("API_URL", "http://localhost:8000")
+
+# --- Ollama ---
+OLLAMA_URL: str = os.getenv("OLLAMA_URL", "http://localhost:11434")
+
+# --- Anthropic ---
+ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")

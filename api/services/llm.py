@@ -1,32 +1,80 @@
 # api/services/llm.py
 """LLM service — builds a prompt from retrieved context and routes to the appropriate model provider."""
 
-from __future__ import annotations
+import asyncio
 
-from openai import OpenAI
+import anthropic
+import openai
 
-from shared.config import OPENAI_API_KEY, ANTHROPIC_API_KEY
+from shared.config import ANTHROPIC_API_KEY, OLLAMA_URL, OPENAI_API_KEY
 from shared.models import ChatTurn, RetrievedChunk
 
-# Models that must be routed to the Anthropic API
-ANTHROPIC_MODELS: set[str] = {"claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5"}
+# Models that are served locally via Ollama
+_KNOWN_OLLAMA_MODELS = {
+    "llama3",
+    "llama3.1",
+    "llama3.2",
+    "mistral",
+    "gemma",
+    "gemma2",
+    "phi3",
+    "phi3.5",
+    "qwen2",
+    "deepseek-r1",
+    "codellama",
+    "mixtral",
+    "neural-chat",
+    "starling-lm",
+    "solar",
+}
 
-# Models served locally via Ollama's OpenAI-compatible endpoint
-LLAMA_MODELS: set[str] = {"llama3.2", "llama3.1", "llama3"}
+
+def _build_system_prompt(context_chunks: list[RetrievedChunk]) -> str:
+    """Construct the system prompt that injects retrieved context."""
+    if not context_chunks:
+        context_text = "No relevant context was found in the knowledge base."
+    else:
+        sections = []
+        for i, rc in enumerate(context_chunks, start=1):
+            sections.append(f"[{i}] {rc.chunk.content}")
+        context_text = "\n\n".join(sections)
+
+    return (
+        "You are a helpful assistant. Answer the user's question using only the "
+        "context below. If the context does not contain enough information to answer, "
+        "say so clearly.\n\n"
+        f"Context:\n{context_text}"
+    )
 
 
-def generate_answer(
+def _build_messages(
+    query: str,
+    system_prompt: str,
+    chat_history: list[ChatTurn] | None,
+) -> list[dict]:
+    """Assemble the message list for the chat completion call."""
+    messages: list[dict] = [{"role": "system", "content": system_prompt}]
+    for turn in chat_history or []:
+        messages.append({"role": turn.role, "content": turn.content})
+    messages.append({"role": "user", "content": query})
+    return messages
+
+
+async def generate_answer(
     query: str,
     context_chunks: list[RetrievedChunk],
     model: str = "gpt-4o-mini",
     chat_history: list[ChatTurn] | None = None,
+    api_key: str | None = None,
+    api_url: str | None = None,
 ) -> str:
-    """Generate an answer to *query* using *context_chunks* as grounding context.
+    """Generate an answer to *query* using the retrieved *context_chunks*.
 
-    Routes to the correct provider based on *model*:
-    - ANTHROPIC_MODELS  -> Anthropic Messages API
-    - LLAMA_MODELS      -> Ollama OpenAI-compatible endpoint (http://localhost:11434/v1)
-    - everything else   -> OpenAI Chat Completions API
+    Routes to the appropriate LLM provider based on the model name:
+    - ``claude-*`` models go to the Anthropic API.
+    - Known Ollama models (or any model not prefixed with ``gpt-`` / ``claude-``)
+      go to the local Ollama OpenAI-compatible endpoint.
+    - Everything else goes to OpenAI.
 
     Parameters
     ----------
@@ -35,9 +83,9 @@ def generate_answer(
     context_chunks:
         Chunks retrieved from the vector store to use as context.
     model:
-        Model identifier. Controls provider routing.
+        The model identifier to use for generation.
     chat_history:
-        Previous conversation turns, oldest-first. Roles must be "user" or "assistant".
+        Optional prior conversation turns (oldest-first).
 
     Returns
     -------

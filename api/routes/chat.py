@@ -1,9 +1,6 @@
 # api/routes/chat.py
 """Chat endpoint — accepts a user query, runs the RAG pipeline, returns an answer."""
 
-import asyncio
-import logging
-
 from fastapi import APIRouter, HTTPException
 
 from api.services.llm import generate_answer

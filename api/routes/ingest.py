@@ -1,8 +1,6 @@
 # api/routes/ingest.py
 """Ingest endpoint — accepts a document upload, chunks it, and stores embeddings."""
 
-import asyncio
-import logging
 import tempfile
 from pathlib import Path
 

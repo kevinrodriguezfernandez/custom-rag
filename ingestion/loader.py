@@ -9,6 +9,9 @@ from pypdf import PdfReader
 def load_document(file_path: Path) -> str:
     """Load a document from *file_path* and return its text content.
 
+    Supported formats: .pdf, .txt, .md. All pages/sections are concatenated
+    with newlines into a single string.
+
     Parameters
     ----------
     file_path:

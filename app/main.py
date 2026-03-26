@@ -45,7 +45,7 @@ CHATS_DIR.mkdir(exist_ok=True)
 AVAILABLE_MODELS: dict[str, list[str]] = {
     "OpenAI": ["gpt-4o", "gpt-4o-mini", "gpt-3.5-turbo"],
     "Anthropic": ["claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5"],
-    "Llama (local)": ["llama3.2", "llama3.1", "llama3"],
+    "Ollama": ["minimax-m2.7:cloud", "llama3.2", "llama3.1", "llama3", "mistral", "gemma2", "phi3", "codellama"],
 }
 
 # ---------------------------------------------------------------------------
@@ -73,6 +73,10 @@ def init_session_state() -> None:
         st.session_state.selected_model = AVAILABLE_MODELS["OpenAI"][0]
     if "chats" not in st.session_state:
         st.session_state.chats = load_all_chats()
+    if "provider_api_key" not in st.session_state:
+        st.session_state.provider_api_key = ""
+    if "provider_api_url" not in st.session_state:
+        st.session_state.provider_api_url = ""
 
 
 # ---------------------------------------------------------------------------
@@ -135,6 +139,8 @@ def call_chat_api(
     top_k: int = 5,
     model: str = "gpt-4o-mini",
     chat_history: list[dict[str, str]] | None = None,
+    api_key: str | None = None,
+    api_url: str | None = None,
 ) -> tuple[str, list[dict[str, Any]], str | None]:
     """POST to /chat/ and return (answer, sources, response_model).
 
@@ -157,6 +163,8 @@ def call_chat_api(
         "top_k": top_k,
         "model": model,
         "chat_history": chat_history or [],
+        "api_key": api_key or None,
+        "api_url": api_url or None,
     }
     with httpx.Client(timeout=60.0) as client:
         response = client.post(f"{API_URL}/chat/", json=payload)
@@ -212,6 +220,28 @@ def render_sidebar() -> None:
         )
         st.session_state.selected_provider = selected_provider
         st.session_state.selected_model = selected_model
+
+        st.divider()
+
+        # --- Provider config ---
+        st.subheader("Configuration")
+        if selected_provider == "Ollama":
+            st.session_state.provider_api_url = st.text_input(
+                "Ollama URL",
+                value=st.session_state.provider_api_url or "http://localhost:11434",
+                key="_ollama_url",
+            )
+            st.session_state.provider_api_key = ""
+            st.caption("No API key needed for Ollama.")
+        else:
+            label = f"{selected_provider} API Key"
+            st.session_state.provider_api_key = st.text_input(
+                label,
+                value=st.session_state.provider_api_key,
+                type="password",
+                key="_provider_api_key",
+            )
+            st.session_state.provider_api_url = ""
 
         st.divider()
 
@@ -344,7 +374,9 @@ def _handle_user_input(user_input: str) -> None:
                 answer, sources, response_model = call_chat_api(
                     user_input,
                     model=st.session_state.selected_model,
-                    chat_history=list(st.session_state.messages),
+                    chat_history=list(st.session_state.messages[:-1]),
+                    api_key=st.session_state.provider_api_key or None,
+                    api_url=st.session_state.provider_api_url or None,
                 )
             except httpx.ConnectError:
                 st.error(

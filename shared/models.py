@@ -54,6 +54,8 @@ class ChatRequest(BaseModel):
         default_factory=list,
         description="Previous conversation turns, ordered oldest-first",
     )
+    api_key: str | None = Field(default=None, description="Provider API key (overrides env var)")
+    api_url: str | None = Field(default=None, description="Provider base URL override (used for Ollama)")
 
 
 class ChatResponse(BaseModel):

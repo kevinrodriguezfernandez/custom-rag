@@ -1,0 +1,77 @@
+name: Claude Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+
+jobs:
+  claude-review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: read
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install linters
+        run: pip install pylint flake8
+
+      - name: Run flake8
+        id: flake8
+        run: |
+          flake8 . --max-line-length=120 --output-file=flake8_report.txt || true
+          echo "output<<EOF" >> $GITHUB_OUTPUT
+          cat flake8_report.txt >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Run pylint
+        id: pylint
+        run: |
+          pylint **/*.py --output-format=text > pylint_report.txt || true
+          echo "output<<EOF" >> $GITHUB_OUTPUT
+          cat pylint_report.txt >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Run Claude Code Review
+        uses: anthropics/claude-code-action@beta
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          direct_prompt: |
+            You are a senior software engineer performing a thorough code review.
+
+            ## Linter Results
+
+            ### flake8
+
+            ${{ steps.flake8.outputs.output }}
+
+            ### pylint
+
+            ${{ steps.pylint.outputs.output }}
+
+            ## Review Checklist
+
+            Use the linter output above as context, then review the PR diff for:
+
+            1. **Correctness** – Does the logic work as intended? Edge cases or bugs?
+            2. **Code quality** – Readable, well-structured, consistent with the codebase?
+            3. **Linter violations** – Flag any issues from flake8/pylint that are non-trivial or indicate real problems. Skip pure style noise.
+            4. **Security** – Injection risks, exposed secrets, unsafe inputs, auth issues?
+            5. **Performance** – Obvious inefficiencies, unnecessary computation?
+            6. **Tests** – Are changes covered? Are existing tests still valid?
+            7. **Breaking changes** – Does this break existing interfaces or contracts?
+
+            Be direct and specific. Point to exact lines when possible.
+            If the code is solid, say so — don't invent issues.
+            Summarize your verdict at the end: **Approve / Request Changes / Needs Discussion**.
