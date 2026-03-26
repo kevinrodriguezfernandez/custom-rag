@@ -1,0 +1,1 @@
+- [RAG project stack and configuration](project_stack.md) — LLM provider routing (OpenAI/Claude/Ollama), embedding model, Qdrant config, CORS, session strategy, added deps

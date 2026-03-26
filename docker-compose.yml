@@ -9,10 +9,15 @@ services:
     ports:
       - "8000:8000"
     env_file: .env
+    environment:
+      - QDRANT_URL=http://qdrant:6333
+      - OLLAMA_URL=http://host.docker.internal:11434
     networks:
       - rag-network
     depends_on:
       - qdrant
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   # ---------- Streamlit frontend ----------
   app:
@@ -22,10 +27,14 @@ services:
     ports:
       - "8501:8501"
     env_file: .env
+    environment:
+      - API_URL=http://api:8000
     networks:
       - rag-network
     depends_on:
       - api
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   # ---------- Qdrant vector store ----------
   qdrant:
