@@ -20,8 +20,7 @@ custom-rag/
 │   └── config.py     # All env vars loaded here
 ├── tests/
 │   ├── unit/
-│   ├── integration/
-│   └── contract/
+│   └── integration/
 └── docker-compose.yml
 ```
 
@@ -46,8 +45,8 @@ custom-rag/
 | Frontend | Streamlit |
 | Backend | FastAPI + Uvicorn |
 | Vector store | Qdrant |
-| Embeddings | OpenAI `text-embedding-3-small` (default) |
-| LLM | OpenAI `gpt-4o` (default) — also supports Anthropic and local Llama |
+| Embeddings | OpenAI `text-embedding-3-small` (default) or Ollama `nomic-embed-text` |
+| LLM | OpenAI, Anthropic (Claude), or Ollama — selectable per chat in the UI |
 | Package manager | [uv](https://docs.astral.sh/uv/) |
 | Python | 3.12+ |
 
@@ -56,7 +55,7 @@ custom-rag/
 - Python 3.12+
 - [uv](https://docs.astral.sh/uv/getting-started/installation/)
 - Docker + Docker Compose (for the full stack)
-- An OpenAI API key
+- An API key for whichever LLM provider you want to use
 
 ## Setup
 
@@ -74,23 +73,38 @@ uv sync
 cp .env.example .env
 ```
 
-Edit `.env` and set at minimum:
+Edit `.env` and set the key(s) for the provider(s) you want to use:
 
 ```env
-OPENAI_API_KEY=sk-...
+OPENAI_API_KEY=sk-...        # for OpenAI models
+ANTHROPIC_API_KEY=sk-ant-... # for Claude models
 ```
 
-The other values have sensible defaults for local development:
+Full list of supported variables:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small` | Model used for document and query embeddings |
-| `OPENAI_CHAT_MODEL` | `gpt-4o` | Default LLM for generation |
+| `OPENAI_API_KEY` | — | Required for OpenAI models |
+| `ANTHROPIC_API_KEY` | — | Required for Anthropic (Claude) models |
+| `OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model when using OpenAI |
+| `EMBEDDING_PROVIDER` | `openai` | Embedding backend: `openai` or `ollama` |
+| `OLLAMA_EMBEDDING_MODEL` | `nomic-embed-text` | Embedding model when using Ollama |
+| `OLLAMA_URL` | `http://localhost:11434` | Ollama server URL |
 | `QDRANT_URL` | `http://localhost:6333` | Qdrant endpoint |
 | `QDRANT_COLLECTION` | `documents` | Qdrant collection name |
-| `API_HOST` | `0.0.0.0` | FastAPI bind host |
-| `API_PORT` | `8000` | FastAPI bind port |
 | `API_URL` | `http://localhost:8000` | URL the Streamlit app uses to reach the API |
+
+## LLM providers
+
+The provider and model are selected per chat in the Streamlit sidebar. The API key you enter in the sidebar is sent directly to the backend for that request.
+
+| Provider | Available models |
+|----------|-----------------|
+| **OpenAI** | `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.2`, `gpt-4o` |
+| **Anthropic** | `claude-opus-4-6`, `claude-sonnet-4-6`, `claude-haiku-4-5` |
+| **Ollama (local)** | `minimax-m2.7:cloud`, `llama3.2`, `llama3.1`, `llama3`, `mistral`, `gemma2`, `phi3`, `codellama` |
+
+For Ollama, the sidebar asks for the Ollama server URL instead of an API key (defaults to `http://host.docker.internal:11434` when running via Docker Compose).
 
 ## Running
 
@@ -136,12 +150,15 @@ uv run streamlit run app/main.py
 | `POST` | `/ingest/` | Upload a document for ingestion |
 | `POST` | `/chat/` | Ask a question; returns answer + source chunks |
 
+**Supported file types:** `.pdf`, `.txt`, `.md`, `.docx`, `.xlsx`, `.xls`
+
 **Ingest a document**
 
 ```bash
 curl -X POST http://localhost:8000/ingest/ \
   -F "file=@/path/to/document.pdf" \
-  -F "document_id=my-doc-001"
+  -F "document_id=my-doc-001" \
+  -F "chat_id=optional-session-id"
 ```
 
 **Chat**
@@ -152,9 +169,13 @@ curl -X POST http://localhost:8000/chat/ \
   -d '{
     "query": "What does the document say about X?",
     "top_k": 5,
-    "model": "gpt-4o-mini"
+    "model": "gpt-4o-mini",
+    "chat_id": "optional-session-id",
+    "chat_history": []
   }'
 ```
+
+Each chat session has its own document scope — documents ingested with a given `chat_id` are only retrieved during queries that use the same `chat_id`.
 
 Interactive API docs are available at `http://localhost:8000/docs`.
 
@@ -164,6 +185,9 @@ Interactive API docs are available at `http://localhost:8000/docs`.
 # All tests
 uv run pytest
 
+# With coverage report
+uv run pytest --cov=api --cov=ingestion --cov=shared --cov-report=term-missing
+
 # Unit tests only
 uv run pytest tests/unit/
 
@@ -171,14 +195,9 @@ uv run pytest tests/unit/
 uv run pytest -v
 ```
 
-## Project status
+## GitHub Actions
 
-The scaffold and all interfaces are in place. The following functions are stubbed with `NotImplementedError` and need implementation:
-
-- `ingestion/loader.py` — `load_document()`
-- `ingestion/chunker.py` — `chunk_text()`
-- `ingestion/embedder.py` — `embed_chunks()`, `upsert_to_store()`
-- `api/routes/chat.py` — `chat()`
-- `api/routes/ingest.py` — `ingest()`
-- `api/services/retriever.py` — retrieval logic
-- `api/services/llm.py` — LLM call logic
+| Workflow | Trigger | What it does |
+|----------|---------|--------------|
+| **Claude Code Review** | Every PR | Runs pytest + coverage, flake8, pylint, then posts an automated Claude code review as a PR comment |
+| **Claude Code** | `@claude` mention in issue or PR comment | Claude responds inline to the comment |
