@@ -22,19 +22,15 @@ class TestRetrieveBasic:
     @pytest.mark.asyncio
     async def test_retrieve_returns_list_of_retrieved_chunks(self) -> None:
         """retrieve() returns a list of RetrievedChunk objects."""
-        with patch("api.services.retriever.openai.OpenAI") as mock_openai, patch(
-            "api.services.retriever.QdrantClient"
+        with patch("shared.embedding.openai.OpenAI") as mock_openai, patch(
+            "api.services.retriever._qdrant"
         ) as mock_qdrant:
-            # Setup OpenAI mock
             oai_instance = MagicMock()
             mock_openai.return_value = oai_instance
             mock_embedding = MagicMock()
             mock_embedding.embedding = [0.1] * 1536
             oai_instance.embeddings.create.return_value.data = [mock_embedding]
 
-            # Setup Qdrant mock
-            qdrant_instance = MagicMock()
-            mock_qdrant.return_value = qdrant_instance
             mock_point = MagicMock()
             mock_point.payload = {
                 "chunk_id": "c-1",
@@ -43,7 +39,7 @@ class TestRetrieveBasic:
                 "metadata": {},
             }
             mock_point.score = 0.95
-            qdrant_instance.query_points.return_value = _mock_qdrant_response([mock_point])
+            mock_qdrant.query_points.return_value = _mock_qdrant_response([mock_point])
 
             result = await retrieve("Test query", top_k=5)
 
@@ -55,8 +51,8 @@ class TestRetrieveBasic:
     @pytest.mark.asyncio
     async def test_retrieve_embeds_query(self) -> None:
         """retrieve() embeds the query using OpenAI."""
-        with patch("api.services.retriever.openai.OpenAI") as mock_openai, patch(
-            "api.services.retriever.QdrantClient"
+        with patch("shared.embedding.openai.OpenAI") as mock_openai, patch(
+            "api.services.retriever._qdrant"
         ) as mock_qdrant:
             oai_instance = MagicMock()
             mock_openai.return_value = oai_instance
@@ -64,13 +60,10 @@ class TestRetrieveBasic:
             mock_embedding.embedding = [0.1] * 1536
             oai_instance.embeddings.create.return_value.data = [mock_embedding]
 
-            qdrant_instance = MagicMock()
-            mock_qdrant.return_value = qdrant_instance
-            qdrant_instance.query_points.return_value = _mock_qdrant_response([])
+            mock_qdrant.query_points.return_value = _mock_qdrant_response([])
 
             await retrieve("Test query", top_k=5)
 
-            # Verify embeddings.create was called with the query
             oai_instance.embeddings.create.assert_called_once()
             call_kwargs = oai_instance.embeddings.create.call_args.kwargs
             assert call_kwargs.get("input") == "Test query"
@@ -78,33 +71,30 @@ class TestRetrieveBasic:
     @pytest.mark.asyncio
     async def test_retrieve_searches_qdrant(self) -> None:
         """retrieve() searches Qdrant with the query embedding."""
-        with patch("api.services.retriever.openai.OpenAI") as mock_openai, patch(
-            "api.services.retriever.QdrantClient"
+        with patch("shared.embedding.openai.OpenAI") as mock_openai, patch(
+            "api.services.retriever._qdrant"
         ) as mock_qdrant:
             oai_instance = MagicMock()
             mock_openai.return_value = oai_instance
+            test_vector = [0.1, 0.2, 0.3] + [0.1] * 1533
             mock_embedding = MagicMock()
-            test_vector = [0.1, 0.2, 0.3] + [0.1] * 1533  # Distinctive vector
             mock_embedding.embedding = test_vector
             oai_instance.embeddings.create.return_value.data = [mock_embedding]
 
-            qdrant_instance = MagicMock()
-            mock_qdrant.return_value = qdrant_instance
-            qdrant_instance.query_points.return_value = _mock_qdrant_response([])
+            mock_qdrant.query_points.return_value = _mock_qdrant_response([])
 
             await retrieve("Test query", top_k=10)
 
-            # Verify Qdrant query_points was called
-            qdrant_instance.query_points.assert_called_once()
-            call_kwargs = qdrant_instance.query_points.call_args.kwargs
+            mock_qdrant.query_points.assert_called_once()
+            call_kwargs = mock_qdrant.query_points.call_args.kwargs
             assert call_kwargs.get("query") == test_vector
             assert call_kwargs.get("limit") == 10
 
     @pytest.mark.asyncio
     async def test_retrieve_respects_top_k_parameter(self) -> None:
         """retrieve() passes top_k to Qdrant."""
-        with patch("api.services.retriever.openai.OpenAI") as mock_openai, patch(
-            "api.services.retriever.QdrantClient"
+        with patch("shared.embedding.openai.OpenAI") as mock_openai, patch(
+            "api.services.retriever._qdrant"
         ) as mock_qdrant:
             oai_instance = MagicMock()
             mock_openai.return_value = oai_instance
@@ -112,13 +102,11 @@ class TestRetrieveBasic:
             mock_embedding.embedding = [0.1] * 1536
             oai_instance.embeddings.create.return_value.data = [mock_embedding]
 
-            qdrant_instance = MagicMock()
-            mock_qdrant.return_value = qdrant_instance
-            qdrant_instance.query_points.return_value = _mock_qdrant_response([])
+            mock_qdrant.query_points.return_value = _mock_qdrant_response([])
 
             await retrieve("Query", top_k=20)
 
-            call_kwargs = qdrant_instance.query_points.call_args.kwargs
+            call_kwargs = mock_qdrant.query_points.call_args.kwargs
             assert call_kwargs.get("limit") == 20
 
 
@@ -128,8 +116,8 @@ class TestRetrieveEdgeCases:
     @pytest.mark.asyncio
     async def test_retrieve_empty_results(self) -> None:
         """retrieve() returns empty list when no chunks are found."""
-        with patch("api.services.retriever.openai.OpenAI") as mock_openai, patch(
-            "api.services.retriever.QdrantClient"
+        with patch("shared.embedding.openai.OpenAI") as mock_openai, patch(
+            "api.services.retriever._qdrant"
         ) as mock_qdrant:
             oai_instance = MagicMock()
             mock_openai.return_value = oai_instance
@@ -137,9 +125,7 @@ class TestRetrieveEdgeCases:
             mock_embedding.embedding = [0.1] * 1536
             oai_instance.embeddings.create.return_value.data = [mock_embedding]
 
-            qdrant_instance = MagicMock()
-            mock_qdrant.return_value = qdrant_instance
-            qdrant_instance.query_points.return_value = _mock_qdrant_response([])
+            mock_qdrant.query_points.return_value = _mock_qdrant_response([])
 
             result = await retrieve("Obscure query", top_k=5)
 
@@ -148,8 +134,8 @@ class TestRetrieveEdgeCases:
     @pytest.mark.asyncio
     async def test_retrieve_multiple_results(self) -> None:
         """retrieve() handles multiple search results."""
-        with patch("api.services.retriever.openai.OpenAI") as mock_openai, patch(
-            "api.services.retriever.QdrantClient"
+        with patch("shared.embedding.openai.OpenAI") as mock_openai, patch(
+            "api.services.retriever._qdrant"
         ) as mock_qdrant:
             oai_instance = MagicMock()
             mock_openai.return_value = oai_instance
@@ -157,45 +143,37 @@ class TestRetrieveEdgeCases:
             mock_embedding.embedding = [0.1] * 1536
             oai_instance.embeddings.create.return_value.data = [mock_embedding]
 
-            qdrant_instance = MagicMock()
-            mock_qdrant.return_value = qdrant_instance
-
-            # Mock multiple search results
             mock_points = []
             for i in range(5):
                 mock_point = MagicMock()
                 mock_point.payload = {
                     "chunk_id": f"c-{i}",
-                    "document_id": f"d-1",
+                    "document_id": "d-1",
                     "content": f"Content {i}",
                     "metadata": {},
                 }
-                mock_point.score = 0.9 - (i * 0.05)  # Decreasing scores
+                mock_point.score = 0.9 - (i * 0.05)
                 mock_points.append(mock_point)
 
-            qdrant_instance.query_points.return_value = _mock_qdrant_response(mock_points)
+            mock_qdrant.query_points.return_value = _mock_qdrant_response(mock_points)
 
             result = await retrieve("Query", top_k=5)
 
             assert len(result) == 5
-            # Verify scores are in descending order
             for i in range(len(result) - 1):
                 assert result[i].score >= result[i + 1].score
 
     @pytest.mark.asyncio
     async def test_retrieve_with_low_score_results(self) -> None:
         """retrieve() returns results even with low similarity scores."""
-        with patch("api.services.retriever.openai.OpenAI") as mock_openai, patch(
-            "api.services.retriever.QdrantClient"
+        with patch("shared.embedding.openai.OpenAI") as mock_openai, patch(
+            "api.services.retriever._qdrant"
         ) as mock_qdrant:
             oai_instance = MagicMock()
             mock_openai.return_value = oai_instance
             mock_embedding = MagicMock()
             mock_embedding.embedding = [0.1] * 1536
             oai_instance.embeddings.create.return_value.data = [mock_embedding]
-
-            qdrant_instance = MagicMock()
-            mock_qdrant.return_value = qdrant_instance
 
             mock_point = MagicMock()
             mock_point.payload = {
@@ -204,8 +182,8 @@ class TestRetrieveEdgeCases:
                 "content": "Weakly relevant content",
                 "metadata": {},
             }
-            mock_point.score = 0.1  # Very low score
-            qdrant_instance.query_points.return_value = _mock_qdrant_response([mock_point])
+            mock_point.score = 0.1
+            mock_qdrant.query_points.return_value = _mock_qdrant_response([mock_point])
 
             result = await retrieve("Query", top_k=1)
 
@@ -219,13 +197,13 @@ class TestRetrieveConfiguration:
     @pytest.mark.asyncio
     async def test_retrieve_uses_configured_embedding_model(self) -> None:
         """retrieve() uses the configured embedding model."""
-        with patch("api.services.retriever.openai.OpenAI") as mock_openai, patch(
-            "api.services.retriever.QdrantClient"
+        with patch("shared.embedding.openai.OpenAI") as mock_openai, patch(
+            "api.services.retriever._qdrant"
         ) as mock_qdrant, patch(
-            "api.services.retriever.OPENAI_EMBEDDING_MODEL",
+            "shared.embedding.OPENAI_EMBEDDING_MODEL",
             "text-embedding-3-small",
         ), patch(
-            "api.services.retriever.EMBEDDING_PROVIDER",
+            "shared.embedding.EMBEDDING_PROVIDER",
             "openai",
         ):
             oai_instance = MagicMock()
@@ -234,9 +212,7 @@ class TestRetrieveConfiguration:
             mock_embedding.embedding = [0.1] * 1536
             oai_instance.embeddings.create.return_value.data = [mock_embedding]
 
-            qdrant_instance = MagicMock()
-            mock_qdrant.return_value = qdrant_instance
-            qdrant_instance.query_points.return_value = _mock_qdrant_response([])
+            mock_qdrant.query_points.return_value = _mock_qdrant_response([])
 
             await retrieve("Query", top_k=5)
 
@@ -246,8 +222,8 @@ class TestRetrieveConfiguration:
     @pytest.mark.asyncio
     async def test_retrieve_uses_configured_qdrant_collection(self) -> None:
         """retrieve() searches the configured Qdrant collection."""
-        with patch("api.services.retriever.openai.OpenAI") as mock_openai, patch(
-            "api.services.retriever.QdrantClient"
+        with patch("shared.embedding.openai.OpenAI") as mock_openai, patch(
+            "api.services.retriever._qdrant"
         ) as mock_qdrant, patch(
             "api.services.retriever.QDRANT_COLLECTION", "my-documents"
         ):
@@ -257,13 +233,11 @@ class TestRetrieveConfiguration:
             mock_embedding.embedding = [0.1] * 1536
             oai_instance.embeddings.create.return_value.data = [mock_embedding]
 
-            qdrant_instance = MagicMock()
-            mock_qdrant.return_value = qdrant_instance
-            qdrant_instance.query_points.return_value = _mock_qdrant_response([])
+            mock_qdrant.query_points.return_value = _mock_qdrant_response([])
 
             await retrieve("Query", top_k=5)
 
-            call_kwargs = qdrant_instance.query_points.call_args.kwargs
+            call_kwargs = mock_qdrant.query_points.call_args.kwargs
             assert call_kwargs.get("collection_name") == "my-documents"
 
 
@@ -273,17 +247,14 @@ class TestRetrieveChunkIntegrity:
     @pytest.mark.asyncio
     async def test_retrieve_preserves_chunk_content(self) -> None:
         """Retrieved chunks preserve the original content."""
-        with patch("api.services.retriever.openai.OpenAI") as mock_openai, patch(
-            "api.services.retriever.QdrantClient"
+        with patch("shared.embedding.openai.OpenAI") as mock_openai, patch(
+            "api.services.retriever._qdrant"
         ) as mock_qdrant:
             oai_instance = MagicMock()
             mock_openai.return_value = oai_instance
             mock_embedding = MagicMock()
             mock_embedding.embedding = [0.1] * 1536
             oai_instance.embeddings.create.return_value.data = [mock_embedding]
-
-            qdrant_instance = MagicMock()
-            mock_qdrant.return_value = qdrant_instance
 
             original_content = "Important context information for the answer."
             mock_point = MagicMock()
@@ -294,7 +265,7 @@ class TestRetrieveChunkIntegrity:
                 "metadata": {"source": "user_upload"},
             }
             mock_point.score = 0.95
-            qdrant_instance.query_points.return_value = _mock_qdrant_response([mock_point])
+            mock_qdrant.query_points.return_value = _mock_qdrant_response([mock_point])
 
             result = await retrieve("Query", top_k=5)
 
@@ -303,17 +274,14 @@ class TestRetrieveChunkIntegrity:
     @pytest.mark.asyncio
     async def test_retrieve_includes_metadata(self) -> None:
         """Retrieved chunks include their metadata."""
-        with patch("api.services.retriever.openai.OpenAI") as mock_openai, patch(
-            "api.services.retriever.QdrantClient"
+        with patch("shared.embedding.openai.OpenAI") as mock_openai, patch(
+            "api.services.retriever._qdrant"
         ) as mock_qdrant:
             oai_instance = MagicMock()
             mock_openai.return_value = oai_instance
             mock_embedding = MagicMock()
             mock_embedding.embedding = [0.1] * 1536
             oai_instance.embeddings.create.return_value.data = [mock_embedding]
-
-            qdrant_instance = MagicMock()
-            mock_qdrant.return_value = qdrant_instance
 
             metadata = {"page": 5, "source": "document.pdf", "chunk_index": 10}
             mock_point = MagicMock()
@@ -324,7 +292,7 @@ class TestRetrieveChunkIntegrity:
                 "metadata": metadata,
             }
             mock_point.score = 0.95
-            qdrant_instance.query_points.return_value = _mock_qdrant_response([mock_point])
+            mock_qdrant.query_points.return_value = _mock_qdrant_response([mock_point])
 
             result = await retrieve("Query", top_k=5)
 

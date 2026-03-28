@@ -450,7 +450,10 @@ def _handle_user_input(user_input: str) -> None:
     st.session_state.messages.append({"role": "assistant", "content": answer})
 
     chat_id = st.session_state.chat_id
-    assert chat_id is not None
+    if chat_id is None:
+        # Should never happen: _start_new_chat() is called above if chat_id was absent.
+        st.error("Internal error: no active chat session. Please refresh the page.")
+        return
     existing_title = st.session_state.chats.get(chat_id, {}).get("title")
     title = existing_title or derive_title(user_input)
     save_chat(chat_id, title, st.session_state.messages)

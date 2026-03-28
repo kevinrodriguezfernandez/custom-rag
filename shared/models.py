@@ -5,7 +5,7 @@ Other modules import from here — they never define their own request/response
 or domain models.
 """
 
-from typing import Literal
+from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 
@@ -19,7 +19,7 @@ class DocumentChunk(BaseModel):
     chunk_id: str = Field(..., description="Unique identifier for this chunk")
     document_id: str = Field(..., description="Parent document identifier")
     content: str = Field(..., description="Plain-text content of the chunk")
-    metadata: dict = Field(default_factory=dict, description="Arbitrary metadata (source, page, etc.)")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="Arbitrary metadata (source, page, etc.)")
 
 
 class RetrievedChunk(BaseModel):
@@ -71,7 +71,7 @@ class IngestRequest(BaseModel):
     """Request to ingest a new document (metadata only; file comes via multipart)."""
 
     document_id: str = Field(..., description="Caller-supplied document identifier")
-    metadata: dict = Field(default_factory=dict, description="Optional metadata to attach")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="Optional metadata to attach")
 
 
 class IngestResponse(BaseModel):

@@ -98,13 +98,8 @@ async def generate_answer(
         The LLM-generated answer.
     """
     system_prompt = _build_system_prompt(context_chunks)
-    messages = _build_messages(query, system_prompt, chat_history)
-    logger.debug(
-        "Prompt built — system_prompt_length=%d message_count=%d",
-        len(system_prompt),
-        len(messages),
-    )
-    loop = asyncio.get_event_loop()
+    logger.debug("Prompt built — system_prompt_length=%d", len(system_prompt))
+    loop = asyncio.get_running_loop()
 
     # --- Provider routing ---
     if model.startswith("claude-"):

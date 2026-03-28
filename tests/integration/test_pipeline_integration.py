@@ -20,22 +20,13 @@ class TestIngestAndChatPipeline:
         # Step 1: Ingest document
         files = {"file": ("doc.txt", b"AI is artificial intelligence", "text/plain")}
         ingest_data = {"document_id": "ai-doc"}
+        chunk = DocumentChunk(
+            chunk_id="ai-doc-0",
+            document_id="ai-doc",
+            content="AI is artificial intelligence"
+        )
 
-        with patch("api.routes.ingest.load_document") as mock_load, \
-             patch("api.routes.ingest.chunk_text") as mock_chunk, \
-             patch("api.routes.ingest.embed_chunks") as mock_embed, \
-             patch("api.routes.ingest.upsert_to_store") as mock_upsert:
-
-            mock_load.return_value = "AI is artificial intelligence"
-            chunk = DocumentChunk(
-                chunk_id="ai-doc-0",
-                document_id="ai-doc",
-                content="AI is artificial intelligence"
-            )
-            mock_chunk.return_value = [chunk]
-            mock_embed.return_value = [[0.1] * 1536]
-            mock_upsert.return_value = 1
-
+        with patch("api.routes.ingest.run_pipeline", return_value=1):
             ingest_response = client.post("/ingest/", files=files, data=ingest_data)
             assert ingest_response.status_code == 200
             assert ingest_response.json()["chunks_created"] == 1
@@ -66,15 +57,15 @@ class TestErrorPropagation:
         """Ingest endpoint properly rejects unsupported file types."""
         client = TestClient(app)
 
-        files = {"file": ("test.docx", b"binary content")}
+        files = {"file": ("test.csv", b"col1,col2")}
         data = {"document_id": "fail-doc"}
 
-        with patch("api.routes.ingest.load_document") as mock_load:
-            mock_load.side_effect = ValueError("Unsupported file type: .docx")
-
+        with patch(
+            "api.routes.ingest.run_pipeline",
+            side_effect=ValueError("Unsupported file type: .csv"),
+        ):
             response = client.post("/ingest/", files=files, data=data)
 
-            # ValueError from load_document is caught and returns 422
             assert response.status_code == 422
             assert "Unsupported file type" in response.json().get("detail", "")
 
@@ -120,29 +111,11 @@ class TestLargeDocumentHandling:
         """Ingest endpoint handles large file uploads."""
         client = TestClient(app)
 
-        # Simulate a large file (1MB of content)
         large_content = b"Content " * 131072  # ~1MB
         files = {"file": ("large.txt", large_content, "text/plain")}
         data = {"document_id": "large-doc"}
 
-        with patch("api.routes.ingest.load_document") as mock_load, \
-             patch("api.routes.ingest.chunk_text") as mock_chunk, \
-             patch("api.routes.ingest.embed_chunks") as mock_embed, \
-             patch("api.routes.ingest.upsert_to_store") as mock_upsert:
-
-            mock_load.return_value = "Content " * 131072
-            chunks = [
-                DocumentChunk(
-                    chunk_id=f"large-doc-{i}",
-                    document_id="large-doc",
-                    content=f"Chunk {i}"
-                )
-                for i in range(10)
-            ]
-            mock_chunk.return_value = chunks
-            mock_embed.return_value = [[0.1] * 1536] * 10
-            mock_upsert.return_value = 10
-
+        with patch("api.routes.ingest.run_pipeline", return_value=10):
             response = client.post("/ingest/", files=files, data=data)
 
             assert response.status_code == 200
@@ -234,26 +207,11 @@ class TestMultipleDocumentTypes:
             files = {"file": (filename, content, mime_type)}
             data = {"document_id": f"doc-{filename.split('.')[1]}"}
 
-            with patch("api.routes.ingest.load_document") as mock_load, \
-                 patch("api.routes.ingest.chunk_text") as mock_chunk, \
-                 patch("api.routes.ingest.embed_chunks") as mock_embed, \
-                 patch("api.routes.ingest.upsert_to_store") as mock_upsert:
-
-                mock_load.return_value = "Content"
-                chunk = DocumentChunk(
-                    chunk_id="c-0",
-                    document_id=data["document_id"],
-                    content="Content"
-                )
-                mock_chunk.return_value = [chunk]
-                mock_embed.return_value = [[0.1] * 1536]
-                mock_upsert.return_value = 1
-
+            with patch("api.routes.ingest.run_pipeline", return_value=1) as mock_pipeline:
                 response = client.post("/ingest/", files=files, data=data)
 
                 assert response.status_code == 200
-                # Verify load_document was called (indicating file was processed)
-                mock_load.assert_called_once()
+                mock_pipeline.assert_called_once()
 
 
 class TestModelVariations:
@@ -295,36 +253,18 @@ class TestDocumentIDPropagation:
     """Tests for document ID propagation through the pipeline."""
 
     def test_document_id_preserved_through_pipeline(self) -> None:
-        """Document ID is preserved from ingest through chat."""
+        """Document ID is preserved from ingest through to the response."""
         client = TestClient(app)
 
         doc_id = "my-special-document-42"
         files = {"file": ("doc.txt", b"Content", "text/plain")}
         data = {"document_id": doc_id}
 
-        with patch("api.routes.ingest.load_document") as mock_load, \
-             patch("api.routes.ingest.chunk_text") as mock_chunk, \
-             patch("api.routes.ingest.embed_chunks") as mock_embed, \
-             patch("api.routes.ingest.upsert_to_store") as mock_upsert:
-
-            mock_load.return_value = "Content"
-
-            # Verify chunk_text receives the correct document_id
-            def verify_doc_id(text, document_id, **kwargs):
-                assert document_id == doc_id
-                return [
-                    DocumentChunk(
-                        chunk_id=f"{document_id}-0",
-                        document_id=document_id,
-                        content="Content"
-                    )
-                ]
-
-            mock_chunk.side_effect = verify_doc_id
-            mock_embed.return_value = [[0.1] * 1536]
-            mock_upsert.return_value = 1
-
+        with patch("api.routes.ingest.run_pipeline", return_value=1) as mock_pipeline:
             response = client.post("/ingest/", files=files, data=data)
 
             assert response.status_code == 200
             assert response.json()["document_id"] == doc_id
+            # Verify run_pipeline was called with the correct document_id
+            call_args = mock_pipeline.call_args
+            assert call_args.args[2] == doc_id
