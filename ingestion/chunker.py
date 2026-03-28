@@ -13,8 +13,8 @@ logger = logging.getLogger(__name__)
 def chunk_text(
     text: str,
     document_id: str,
-    chunk_size: int = 512,
-    chunk_overlap: int = 64,
+    chunk_size: int = 1024,
+    chunk_overlap: int = 128,
     chat_id: str = "",
 ) -> list[DocumentChunk]:
     """Split *text* into chunks and return a list of ``DocumentChunk`` objects.
