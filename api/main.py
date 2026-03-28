@@ -23,11 +23,14 @@ app = FastAPI(
     description="Retrieval-Augmented Generation backend service",
 )
 
-# --- CORS (allow all origins for local development) ---
+# --- CORS ---
+# allow_credentials=True is incompatible with allow_origins=["*"] per the CORS spec
+# (browsers reject credentialed requests to wildcard origins). API keys are passed
+# in the request body, not via cookies, so credentials mode is not needed.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )

@@ -4,32 +4,16 @@
 import asyncio
 import logging
 
-import openai
 from qdrant_client import QdrantClient
 from qdrant_client.models import FieldCondition, Filter, MatchValue
 
-from shared.config import (
-    EMBEDDING_PROVIDER,
-    OLLAMA_EMBEDDING_MODEL,
-    OLLAMA_URL,
-    OPENAI_API_KEY,
-    OPENAI_EMBEDDING_MODEL,
-    QDRANT_COLLECTION,
-    QDRANT_URL,
-)
+from shared.config import QDRANT_COLLECTION, QDRANT_URL
+from shared.embedding import get_embedding_client
 from shared.models import DocumentChunk, RetrievedChunk
 
 logger = logging.getLogger(__name__)
 
-
-def _embedding_client() -> tuple[openai.OpenAI, str]:
-    """Return (client, model) for the configured embedding provider."""
-    if EMBEDDING_PROVIDER == "ollama":
-        return (
-            openai.OpenAI(base_url=f"{OLLAMA_URL}/v1", api_key="ollama"),
-            OLLAMA_EMBEDDING_MODEL,
-        )
-    return openai.OpenAI(api_key=OPENAI_API_KEY), OPENAI_EMBEDDING_MODEL
+_qdrant = QdrantClient(url=QDRANT_URL)
 
 
 async def retrieve(query: str, top_k: int = 5, chat_id: str | None = None) -> list[RetrievedChunk]:
@@ -45,16 +29,18 @@ async def retrieve(query: str, top_k: int = 5, chat_id: str | None = None) -> li
         The user's natural-language question.
     top_k:
         Maximum number of chunks to return.
+    chat_id:
+        Optional chat session ID to scope results to a specific session.
 
     Returns
     -------
     list[RetrievedChunk]
         Ranked list of relevant chunks with scores, highest first.
     """
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     # Embed the query (blocking I/O — run in thread pool)
-    emb_client, emb_model = _embedding_client()
+    emb_client, emb_model = get_embedding_client()
     logger.debug("Embedding query — model=%s", emb_model)
 
     def _embed() -> list[float]:
@@ -67,7 +53,6 @@ async def retrieve(query: str, top_k: int = 5, chat_id: str | None = None) -> li
     query_vector: list[float] = await loop.run_in_executor(None, _embed)
 
     # Search Qdrant (blocking I/O — run in thread pool)
-    qdrant = QdrantClient(url=QDRANT_URL)
     logger.debug(
         "Searching Qdrant — collection=%s top_k=%d chat_id=%s",
         QDRANT_COLLECTION,
@@ -79,7 +64,7 @@ async def retrieve(query: str, top_k: int = 5, chat_id: str | None = None) -> li
         query_filter = Filter(
             must=[FieldCondition(key="metadata.chat_id", match=MatchValue(value=chat_id))]
         ) if chat_id else None
-        response = qdrant.query_points(
+        response = _qdrant.query_points(
             collection_name=QDRANT_COLLECTION,
             query=query_vector,
             limit=top_k,

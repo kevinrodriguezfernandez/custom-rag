@@ -25,7 +25,7 @@ class TestEmbedChunksAdvanced:
             ),
         ]
 
-        with patch("ingestion.embedder.openai.OpenAI") as mock_openai:
+        with patch("shared.embedding.openai.OpenAI") as mock_openai:
             client_instance = MagicMock()
             mock_openai.return_value = client_instance
 
@@ -38,7 +38,6 @@ class TestEmbedChunksAdvanced:
             result = embed_chunks(chunks)
 
             assert len(result) == 2
-            # Verify content was passed correctly
             call_kwargs = client_instance.embeddings.create.call_args.kwargs
             input_content = call_kwargs["input"]
             assert input_content[0] == "Hello 你好 مرحبا café"
@@ -55,7 +54,7 @@ class TestEmbedChunksAdvanced:
             )
         ]
 
-        with patch("ingestion.embedder.openai.OpenAI") as mock_openai:
+        with patch("shared.embedding.openai.OpenAI") as mock_openai:
             client_instance = MagicMock()
             mock_openai.return_value = client_instance
 
@@ -66,7 +65,6 @@ class TestEmbedChunksAdvanced:
 
             assert len(result) == 1
             assert len(result[0]) == 1536
-            # Verify long content was passed
             call_kwargs = client_instance.embeddings.create.call_args.kwargs
             assert call_kwargs["input"][0] == long_content
 
@@ -81,7 +79,7 @@ class TestEmbedChunksAdvanced:
             )
         ]
 
-        with patch("ingestion.embedder.openai.OpenAI") as mock_openai:
+        with patch("shared.embedding.openai.OpenAI") as mock_openai:
             client_instance = MagicMock()
             mock_openai.return_value = client_instance
 
@@ -103,9 +101,8 @@ class TestEmbedChunksAdvanced:
             )
         ]
 
-        # Test with different vector sizes
         for vector_size in [512, 768, 1536, 3072]:
-            with patch("ingestion.embedder.openai.OpenAI") as mock_openai:
+            with patch("shared.embedding.openai.OpenAI") as mock_openai:
                 client_instance = MagicMock()
                 mock_openai.return_value = client_instance
 
@@ -127,7 +124,7 @@ class TestEmbedChunksAdvanced:
             )
         ]
 
-        with patch("ingestion.embedder.openai.OpenAI") as mock_openai:
+        with patch("shared.embedding.openai.OpenAI") as mock_openai:
             client_instance = MagicMock()
             mock_openai.return_value = client_instance
 
@@ -136,7 +133,6 @@ class TestEmbedChunksAdvanced:
 
             result = embed_chunks(chunks)
 
-            # Verify only content was passed
             call_kwargs = client_instance.embeddings.create.call_args.kwargs
             input_content = call_kwargs["input"]
             assert input_content == ["Content to embed"]
@@ -154,19 +150,14 @@ class TestUpsertToStoreAdvanced:
         ]
         vectors = [[0.1] * 1536]  # Only 1 vector for 2 chunks
 
-        with patch("ingestion.embedder.QdrantClient") as mock_qdrant:
-            client_instance = MagicMock()
-            mock_qdrant.return_value = client_instance
-
+        with patch("ingestion.embedder._qdrant") as mock_qdrant:
             mock_collection = MagicMock()
             mock_collection.name = "documents"
-            client_instance.get_collections.return_value.collections = [mock_collection]
+            mock_qdrant.get_collections.return_value.collections = [mock_collection]
 
-            # This will cause a mismatch in the zip operation
-            # zip will truncate to the shorter list
+            # zip truncates to the shorter list — only 1 point upserted
             count = upsert_to_store(chunks, vectors)
 
-            # Only 1 point should be upserted (zip stops at shortest)
             assert count == 1
 
     def test_upsert_preserves_chunk_metadata(self) -> None:
@@ -180,18 +171,14 @@ class TestUpsertToStoreAdvanced:
         chunks = [chunk]
         vectors = [[0.1] * 1536]
 
-        with patch("ingestion.embedder.QdrantClient") as mock_qdrant:
-            client_instance = MagicMock()
-            mock_qdrant.return_value = client_instance
-
+        with patch("ingestion.embedder._qdrant") as mock_qdrant:
             mock_collection = MagicMock()
             mock_collection.name = "documents"
-            client_instance.get_collections.return_value.collections = [mock_collection]
+            mock_qdrant.get_collections.return_value.collections = [mock_collection]
 
             upsert_to_store(chunks, vectors)
 
-            # Verify payload includes all metadata
-            call_kwargs = client_instance.upsert.call_args.kwargs
+            call_kwargs = mock_qdrant.upsert.call_args.kwargs
             points = call_kwargs["points"]
             payload = points[0].payload
 
@@ -210,40 +197,34 @@ class TestUpsertToStoreAdvanced:
         chunks = [chunk]
         vectors = [[0.1] * 1536]
 
-        with patch("ingestion.embedder.QdrantClient") as mock_qdrant:
-            client_instance = MagicMock()
-            mock_qdrant.return_value = client_instance
-
+        with patch("ingestion.embedder._qdrant") as mock_qdrant:
             mock_collection = MagicMock()
             mock_collection.name = "documents"
-            client_instance.get_collections.return_value.collections = [mock_collection]
+            mock_qdrant.get_collections.return_value.collections = [mock_collection]
 
             count = upsert_to_store(chunks, vectors)
 
             assert count == 1
-            call_kwargs = client_instance.upsert.call_args.kwargs
+            call_kwargs = mock_qdrant.upsert.call_args.kwargs
             payload = call_kwargs["points"][0].payload
             assert payload["metadata"] == {}
 
-    def test_upsert_vector_hash_distribution(self) -> None:
-        """upsert_to_store creates unique IDs for similar chunk_ids."""
+    def test_upsert_hash_distribution(self) -> None:
+        """upsert_to_store creates unique deterministic IDs for different chunk_ids."""
         chunks = [
             DocumentChunk(chunk_id=f"chunk-{i}", document_id="d-1", content=f"C{i}")
             for i in range(5)
         ]
-        vectors = [[0.1 + i*0.01] * 1536 for i in range(5)]
+        vectors = [[0.1 + i * 0.01] * 1536 for i in range(5)]
 
-        with patch("ingestion.embedder.QdrantClient") as mock_qdrant:
-            client_instance = MagicMock()
-            mock_qdrant.return_value = client_instance
-
+        with patch("ingestion.embedder._qdrant") as mock_qdrant:
             mock_collection = MagicMock()
             mock_collection.name = "documents"
-            client_instance.get_collections.return_value.collections = [mock_collection]
+            mock_qdrant.get_collections.return_value.collections = [mock_collection]
 
             upsert_to_store(chunks, vectors)
 
-            call_kwargs = client_instance.upsert.call_args.kwargs
+            call_kwargs = mock_qdrant.upsert.call_args.kwargs
             points = call_kwargs["points"]
             ids = [p.id for p in points]
 
@@ -254,22 +235,17 @@ class TestUpsertToStoreAdvanced:
         """upsert_to_store handles large vector dimensions."""
         chunk = DocumentChunk(chunk_id="c-1", document_id="d-1", content="C")
         chunks = [chunk]
-
-        # Create a very large vector (e.g., 4096-dimensional)
         large_vector = [[0.5] * 4096]
 
-        with patch("ingestion.embedder.QdrantClient") as mock_qdrant:
-            client_instance = MagicMock()
-            mock_qdrant.return_value = client_instance
-
+        with patch("ingestion.embedder._qdrant") as mock_qdrant:
             mock_collection = MagicMock()
             mock_collection.name = "documents"
-            client_instance.get_collections.return_value.collections = [mock_collection]
+            mock_qdrant.get_collections.return_value.collections = [mock_collection]
 
             count = upsert_to_store(chunks, large_vector)
 
             assert count == 1
-            call_kwargs = client_instance.upsert.call_args.kwargs
+            call_kwargs = mock_qdrant.upsert.call_args.kwargs
             point = call_kwargs["points"][0]
             assert len(point.vector) == 4096
 
@@ -279,39 +255,36 @@ class TestUpsertToStoreAdvanced:
         chunks = [chunk]
         vectors = [[0.1] * 1536]
 
-        with patch("ingestion.embedder.QdrantClient") as mock_qdrant, \
+        with patch("ingestion.embedder._qdrant") as mock_qdrant, \
              patch("ingestion.embedder.QDRANT_COLLECTION", "custom-collection"):
-
-            client_instance = MagicMock()
-            mock_qdrant.return_value = client_instance
 
             mock_collection = MagicMock()
             mock_collection.name = "custom-collection"
-            client_instance.get_collections.return_value.collections = [mock_collection]
+            mock_qdrant.get_collections.return_value.collections = [mock_collection]
 
             upsert_to_store(chunks, vectors)
 
-            # Verify upsert was called with correct collection
-            call_kwargs = client_instance.upsert.call_args.kwargs
+            call_kwargs = mock_qdrant.upsert.call_args.kwargs
             assert call_kwargs["collection_name"] == "custom-collection"
 
-    def test_upsert_verifies_qdrant_url_usage(self) -> None:
-        """upsert_to_store creates client with configured Qdrant URL."""
-        chunk = DocumentChunk(chunk_id="c-1", document_id="d-1", content="C")
+    def test_upsert_deterministic_point_ids(self) -> None:
+        """Same chunk_id always produces the same point ID (deterministic hash)."""
+        chunk = DocumentChunk(chunk_id="stable-id", document_id="d-1", content="C")
         chunks = [chunk]
         vectors = [[0.1] * 1536]
 
-        with patch("ingestion.embedder.QdrantClient") as mock_qdrant, \
-             patch("ingestion.embedder.QDRANT_URL", "http://custom-qdrant:6333"):
-
-            client_instance = MagicMock()
-            mock_qdrant.return_value = client_instance
-
+        with patch("ingestion.embedder._qdrant") as mock_qdrant:
             mock_collection = MagicMock()
             mock_collection.name = "documents"
-            client_instance.get_collections.return_value.collections = [mock_collection]
+            mock_qdrant.get_collections.return_value.collections = [mock_collection]
 
             upsert_to_store(chunks, vectors)
+            first_id = mock_qdrant.upsert.call_args.kwargs["points"][0].id
 
-            # Verify QdrantClient was created with correct URL
-            mock_qdrant.assert_called_once_with(url="http://custom-qdrant:6333")
+            mock_qdrant.reset_mock()
+            mock_qdrant.get_collections.return_value.collections = [mock_collection]
+
+            upsert_to_store(chunks, vectors)
+            second_id = mock_qdrant.upsert.call_args.kwargs["points"][0].id
+
+            assert first_id == second_id

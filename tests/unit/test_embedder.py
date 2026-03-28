@@ -14,8 +14,7 @@ class TestEmbedChunks:
 
     def test_embed_chunks_returns_vectors(self, sample_chunks) -> None:
         """embed_chunks returns a list of vectors."""
-        with patch("ingestion.embedder.openai.OpenAI") as mock_openai:
-            # Setup mock
+        with patch("shared.embedding.openai.OpenAI") as mock_openai:
             client_instance = MagicMock()
             mock_openai.return_value = client_instance
 
@@ -25,10 +24,8 @@ class TestEmbedChunks:
                 mock_embedding
             ] * len(sample_chunks)
 
-            # Call function
             result = embed_chunks(sample_chunks)
 
-            # Verify
             assert isinstance(result, list)
             assert len(result) == len(sample_chunks)
             assert all(isinstance(v, list) for v in result)
@@ -36,7 +33,7 @@ class TestEmbedChunks:
 
     def test_embed_chunks_passes_correct_content(self, sample_chunks) -> None:
         """embed_chunks passes chunk content to the OpenAI API."""
-        with patch("ingestion.embedder.openai.OpenAI") as mock_openai:
+        with patch("shared.embedding.openai.OpenAI") as mock_openai:
             client_instance = MagicMock()
             mock_openai.return_value = client_instance
 
@@ -46,10 +43,8 @@ class TestEmbedChunks:
                 mock_embedding
             ] * len(sample_chunks)
 
-            # Call function
             embed_chunks(sample_chunks)
 
-            # Verify the API was called with correct content
             client_instance.embeddings.create.assert_called_once()
             call_kwargs = client_instance.embeddings.create.call_args.kwargs
             assert "input" in call_kwargs
@@ -63,12 +58,10 @@ class TestEmbedChunks:
 
     def test_embed_chunks_uses_configured_model(self, sample_chunks) -> None:
         """embed_chunks uses the configured embedding model."""
-        with patch(
-            "ingestion.embedder.openai.OpenAI"
-        ) as mock_openai, patch(
-            "ingestion.embedder.OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"
+        with patch("shared.embedding.openai.OpenAI") as mock_openai, patch(
+            "shared.embedding.OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"
         ), patch(
-            "ingestion.embedder.EMBEDDING_PROVIDER", "openai"
+            "shared.embedding.EMBEDDING_PROVIDER", "openai"
         ):
             client_instance = MagicMock()
             mock_openai.return_value = client_instance
@@ -79,10 +72,8 @@ class TestEmbedChunks:
                 mock_embedding
             ] * len(sample_chunks)
 
-            # Call function
             embed_chunks(sample_chunks)
 
-            # Verify model was used
             call_kwargs = client_instance.embeddings.create.call_args.kwargs
             assert call_kwargs.get("model") == "text-embedding-3-small"
 
@@ -97,7 +88,7 @@ class TestEmbedChunks:
             )
         ]
 
-        with patch("ingestion.embedder.openai.OpenAI") as mock_openai:
+        with patch("shared.embedding.openai.OpenAI") as mock_openai:
             client_instance = MagicMock()
             mock_openai.return_value = client_instance
 
@@ -112,7 +103,7 @@ class TestEmbedChunks:
 
     def test_embed_chunks_empty_list(self) -> None:
         """embed_chunks handles an empty chunk list."""
-        with patch("ingestion.embedder.openai.OpenAI") as mock_openai:
+        with patch("shared.embedding.openai.OpenAI") as mock_openai:
             client_instance = MagicMock()
             mock_openai.return_value = client_instance
             client_instance.embeddings.create.return_value.data = []
@@ -123,11 +114,10 @@ class TestEmbedChunks:
 
     def test_embed_chunks_preserves_order(self, sample_chunks) -> None:
         """Returned vectors are in the same order as input chunks."""
-        with patch("ingestion.embedder.openai.OpenAI") as mock_openai:
+        with patch("shared.embedding.openai.OpenAI") as mock_openai:
             client_instance = MagicMock()
             mock_openai.return_value = client_instance
 
-            # Create distinct embeddings for each chunk
             mock_embeddings = []
             for i in range(len(sample_chunks)):
                 mock_embedding = MagicMock()
@@ -138,7 +128,6 @@ class TestEmbedChunks:
 
             result = embed_chunks(sample_chunks)
 
-            # Verify order is preserved
             for i, vector in enumerate(result):
                 assert vector[0] == float(i)
 
@@ -150,16 +139,10 @@ class TestUpsertToStore:
         """upsert_to_store returns the number of upserted points."""
         vectors = [[0.1] * 1536 for _ in sample_chunks]
 
-        with patch("ingestion.embedder.QdrantClient") as mock_client_class:
-            client_instance = MagicMock()
-            mock_client_class.return_value = client_instance
-
-            # Mock get_collections to return existing collection
+        with patch("ingestion.embedder._qdrant") as mock_qdrant:
             mock_collection = MagicMock()
             mock_collection.name = "documents"
-            client_instance.get_collections.return_value.collections = [
-                mock_collection
-            ]
+            mock_qdrant.get_collections.return_value.collections = [mock_collection]
 
             count = upsert_to_store(sample_chunks, vectors)
 
@@ -169,20 +152,15 @@ class TestUpsertToStore:
         """upsert_to_store creates the collection if it doesn't exist."""
         vectors = [[0.1] * 1536 for _ in sample_chunks]
 
-        with patch("ingestion.embedder.QdrantClient") as mock_client_class, patch(
+        with patch("ingestion.embedder._qdrant") as mock_qdrant, patch(
             "ingestion.embedder.QDRANT_COLLECTION", "documents"
         ):
-            client_instance = MagicMock()
-            mock_client_class.return_value = client_instance
-
-            # Mock get_collections to return NO collections (empty)
-            client_instance.get_collections.return_value.collections = []
+            mock_qdrant.get_collections.return_value.collections = []
 
             upsert_to_store(sample_chunks, vectors)
 
-            # Verify create_collection was called
-            client_instance.create_collection.assert_called_once()
-            call_kwargs = client_instance.create_collection.call_args.kwargs
+            mock_qdrant.create_collection.assert_called_once()
+            call_kwargs = mock_qdrant.create_collection.call_args.kwargs
             assert call_kwargs["collection_name"] == "documents"
 
     def test_upsert_does_not_recreate_existing_collection(
@@ -191,67 +169,47 @@ class TestUpsertToStore:
         """upsert_to_store skips collection creation if it exists."""
         vectors = [[0.1] * 1536 for _ in sample_chunks]
 
-        with patch("ingestion.embedder.QdrantClient") as mock_client_class, patch(
+        with patch("ingestion.embedder._qdrant") as mock_qdrant, patch(
             "ingestion.embedder.QDRANT_COLLECTION", "documents"
         ):
-            client_instance = MagicMock()
-            mock_client_class.return_value = client_instance
-
-            # Mock get_collections to return existing collection
             mock_collection = MagicMock()
             mock_collection.name = "documents"
-            client_instance.get_collections.return_value.collections = [
-                mock_collection
-            ]
+            mock_qdrant.get_collections.return_value.collections = [mock_collection]
 
             upsert_to_store(sample_chunks, vectors)
 
-            # Verify create_collection was NOT called
-            client_instance.create_collection.assert_not_called()
+            mock_qdrant.create_collection.assert_not_called()
 
     def test_upsert_calls_qdrant_upsert(self, sample_chunks) -> None:
         """upsert_to_store calls the Qdrant upsert method."""
         vectors = [[0.1] * 1536 for _ in sample_chunks]
 
-        with patch("ingestion.embedder.QdrantClient") as mock_client_class:
-            client_instance = MagicMock()
-            mock_client_class.return_value = client_instance
-
+        with patch("ingestion.embedder._qdrant") as mock_qdrant:
             mock_collection = MagicMock()
             mock_collection.name = "documents"
-            client_instance.get_collections.return_value.collections = [
-                mock_collection
-            ]
+            mock_qdrant.get_collections.return_value.collections = [mock_collection]
 
             upsert_to_store(sample_chunks, vectors)
 
-            # Verify upsert was called
-            client_instance.upsert.assert_called_once()
+            mock_qdrant.upsert.assert_called_once()
 
     def test_upsert_payload_structure(self, sample_source) -> None:
         """Upserted points have correct payload structure."""
         chunks = [sample_source]
         vectors = [[0.1] * 1536]
 
-        with patch("ingestion.embedder.QdrantClient") as mock_client_class:
-            client_instance = MagicMock()
-            mock_client_class.return_value = client_instance
-
+        with patch("ingestion.embedder._qdrant") as mock_qdrant:
             mock_collection = MagicMock()
             mock_collection.name = "documents"
-            client_instance.get_collections.return_value.collections = [
-                mock_collection
-            ]
+            mock_qdrant.get_collections.return_value.collections = [mock_collection]
 
             upsert_to_store(chunks, vectors)
 
-            # Verify upsert was called with PointStruct objects
-            call_kwargs = client_instance.upsert.call_args.kwargs
+            call_kwargs = mock_qdrant.upsert.call_args.kwargs
             points = call_kwargs.get("points", [])
             assert len(points) == 1
             point = points[0]
 
-            # Verify point has correct structure
             assert hasattr(point, "vector")
             assert hasattr(point, "payload")
             assert point.payload["chunk_id"] == sample_source.chunk_id
@@ -262,15 +220,10 @@ class TestUpsertToStore:
         """upsert_to_store handles a single chunk."""
         vectors = [[0.1] * 1536]
 
-        with patch("ingestion.embedder.QdrantClient") as mock_client_class:
-            client_instance = MagicMock()
-            mock_client_class.return_value = client_instance
-
+        with patch("ingestion.embedder._qdrant") as mock_qdrant:
             mock_collection = MagicMock()
             mock_collection.name = "documents"
-            client_instance.get_collections.return_value.collections = [
-                mock_collection
-            ]
+            mock_qdrant.get_collections.return_value.collections = [mock_collection]
 
             count = upsert_to_store([sample_source], vectors)
 
@@ -278,15 +231,10 @@ class TestUpsertToStore:
 
     def test_upsert_empty_chunks(self) -> None:
         """upsert_to_store handles empty chunk list."""
-        with patch("ingestion.embedder.QdrantClient") as mock_client_class:
-            client_instance = MagicMock()
-            mock_client_class.return_value = client_instance
-
+        with patch("ingestion.embedder._qdrant") as mock_qdrant:
             mock_collection = MagicMock()
             mock_collection.name = "documents"
-            client_instance.get_collections.return_value.collections = [
-                mock_collection
-            ]
+            mock_qdrant.get_collections.return_value.collections = [mock_collection]
 
             count = upsert_to_store([], [])
 

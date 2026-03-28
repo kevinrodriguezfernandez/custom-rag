@@ -11,7 +11,6 @@ from shared.models import (
     ChatRequest,
     ChatTurn,
     DocumentChunk,
-    HealthResponse,
     RetrievedChunk,
 )
 
