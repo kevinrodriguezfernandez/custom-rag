@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import datetime
 import json
-import os
 import sys
 import uuid
 from pathlib import Path
@@ -223,7 +222,10 @@ def render_upload_panel() -> None:
         if st.button("Ingest", use_container_width=True, key="_ingest_btn"):
             with st.spinner(f"Ingesting {uploaded.name}..."):
                 try:
-                    result = call_ingest_api(uploaded.read(), uploaded.name, doc_id, chat_id=st.session_state.chat_id or "")
+                    result = call_ingest_api(
+                        uploaded.read(), uploaded.name, doc_id,
+                        chat_id=st.session_state.chat_id or "",
+                    )
                     st.success(f"Done — {result['chunks_created']} chunks created.")
                 except httpx.ConnectError:
                     st.error("Cannot reach the API.")
@@ -258,7 +260,10 @@ def render_sidebar() -> None:
         # Reset model to first in provider's list when provider changes
         if selected_provider != st.session_state.selected_provider:
             st.session_state.selected_provider = selected_provider
-            models = st.session_state.ollama_models if selected_provider == "Ollama" else AVAILABLE_MODELS[selected_provider]
+            if selected_provider == "Ollama":
+                models = st.session_state.ollama_models
+            else:
+                models = AVAILABLE_MODELS[selected_provider]
             st.session_state.selected_model = models[0] if models else ""
 
         # --- Model selector (filtered to selected provider) ---
@@ -271,7 +276,8 @@ def render_sidebar() -> None:
             if not provider_models:
                 err = st.session_state.get("_ollama_fetch_error", "")
                 with col1:
-                    st.warning(f"No Ollama models found. {err}" if err else "No Ollama models found. Is Ollama running?")
+                    msg = f"No Ollama models found. {err}" if err else "No Ollama models found. Is Ollama running?"
+                    st.warning(msg)
         else:
             provider_models = AVAILABLE_MODELS[selected_provider]
 

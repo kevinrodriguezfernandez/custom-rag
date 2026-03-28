@@ -1,9 +1,10 @@
 # tests/unit/test_loader.py
 """Unit tests for the document loader module."""
 
-from pathlib import Path
 import tempfile
+from pathlib import Path
 
+import openpyxl
 import pytest
 
 from ingestion.loader import load_document
@@ -231,3 +232,93 @@ class TestLoadDocumentParameterHandling:
             assert "Relative path test" in result
         finally:
             temp_path.unlink()
+
+
+class TestLoadDocumentExcelFiles:
+    """Tests for .xlsx/.xls loading with header-aware row serialization."""
+
+    def _make_xlsx(self, headers: list, rows: list[list]) -> Path:
+        """Create a temporary .xlsx file and return its path."""
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.append(headers)
+        for row in rows:
+            ws.append(row)
+        tmp = tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False)
+        wb.save(tmp.name)
+        tmp.close()
+        return Path(tmp.name)
+
+    def test_row_contains_header_value_pairs(self) -> None:
+        """Each data row is serialized as 'Header: value' pairs."""
+        path = self._make_xlsx(
+            headers=["Name", "Age", "Role"],
+            rows=[["Alice", 30, "Engineer"]],
+        )
+        try:
+            result = load_document(path)
+            assert "Name: Alice" in result
+            assert "Age: 30" in result
+            assert "Role: Engineer" in result
+        finally:
+            path.unlink()
+
+    def test_header_row_not_duplicated_as_data(self) -> None:
+        """The header row itself is not serialized as a data row."""
+        path = self._make_xlsx(
+            headers=["Name", "Age"],
+            rows=[["Bob", 25]],
+        )
+        try:
+            result = load_document(path)
+            # Header values appear as keys, not standalone lines
+            assert "Name: Bob" in result
+            assert "Age: 25" in result
+            # The raw header row should not appear as "Name: Name"
+            assert "Name: Name" not in result
+        finally:
+            path.unlink()
+
+    def test_none_cells_serialized_as_empty_string(self) -> None:
+        """None cell values are rendered as empty string, not 'None'."""
+        path = self._make_xlsx(
+            headers=["Name", "Notes"],
+            rows=[["Carol", None]],
+        )
+        try:
+            result = load_document(path)
+            assert "Notes: None" not in result
+            assert "Name: Carol" in result
+        finally:
+            path.unlink()
+
+    def test_sheet_name_included(self) -> None:
+        """The sheet title appears in the output."""
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Employees"
+        ws.append(["Name"])
+        ws.append(["Dave"])
+        tmp = tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False)
+        wb.save(tmp.name)
+        tmp.close()
+        path = Path(tmp.name)
+        try:
+            result = load_document(path)
+            assert "Employees" in result
+        finally:
+            path.unlink()
+
+    def test_multiple_rows_all_serialized(self) -> None:
+        """All data rows are present in the output."""
+        path = self._make_xlsx(
+            headers=["City"],
+            rows=[["Madrid"], ["London"], ["Paris"]],
+        )
+        try:
+            result = load_document(path)
+            assert "City: Madrid" in result
+            assert "City: London" in result
+            assert "City: Paris" in result
+        finally:
+            path.unlink()
