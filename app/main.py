@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import datetime
 import json
-import os
 import sys
 import uuid
 from pathlib import Path
@@ -45,7 +44,7 @@ CHATS_DIR.mkdir(exist_ok=True)
 AVAILABLE_MODELS: dict[str, list[str]] = {
     "OpenAI": ["gpt-5.4", "gpt-5.4-mini", "gpt-5.2", "gpt-4o", "gpt-4o-mini", "gpt-3.5-turbo"],
     "Anthropic": ["claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5"],
-    "Ollama": ["minimax-m2.7:cloud", "llama3.2", "llama3.1", "llama3", "mistral", "gemma2", "phi3", "codellama"],
+    "Ollama": [],
 }
 
 # ---------------------------------------------------------------------------
@@ -77,6 +76,8 @@ def init_session_state() -> None:
         st.session_state.provider_api_key = ""
     if "provider_api_url" not in st.session_state:
         st.session_state.provider_api_url = ""
+    if "ollama_models" not in st.session_state:
+        st.session_state.ollama_models = fetch_ollama_models()
 
 
 # ---------------------------------------------------------------------------
@@ -178,6 +179,18 @@ def call_chat_api(
     return answer, sources, response_model
 
 
+def fetch_ollama_models() -> list[str]:
+    """Fetch available Ollama models from the API. Returns empty list on failure."""
+    try:
+        with httpx.Client(timeout=5.0) as client:
+            response = client.get(f"{API_URL}/models/ollama")
+            response.raise_for_status()
+        return response.json().get("models", [])
+    except Exception as exc:
+        st.session_state["_ollama_fetch_error"] = str(exc)
+        return []
+
+
 def call_ingest_api(file_bytes: bytes, filename: str, document_id: str, chat_id: str = "") -> dict:
     """POST a document to /ingest/ and return the IngestResponse dict."""
     with httpx.Client(timeout=120.0) as client:
@@ -209,7 +222,10 @@ def render_upload_panel() -> None:
         if st.button("Ingest", use_container_width=True, key="_ingest_btn"):
             with st.spinner(f"Ingesting {uploaded.name}..."):
                 try:
-                    result = call_ingest_api(uploaded.read(), uploaded.name, doc_id, chat_id=st.session_state.chat_id or "")
+                    result = call_ingest_api(
+                        uploaded.read(), uploaded.name, doc_id,
+                        chat_id=st.session_state.chat_id or "",
+                    )
                     st.success(f"Done — {result['chunks_created']} chunks created.")
                 except httpx.ConnectError:
                     st.error("Cannot reach the API.")
@@ -244,17 +260,35 @@ def render_sidebar() -> None:
         # Reset model to first in provider's list when provider changes
         if selected_provider != st.session_state.selected_provider:
             st.session_state.selected_provider = selected_provider
-            st.session_state.selected_model = AVAILABLE_MODELS[selected_provider][0]
+            if selected_provider == "Ollama":
+                models = st.session_state.ollama_models
+            else:
+                models = AVAILABLE_MODELS[selected_provider]
+            st.session_state.selected_model = models[0] if models else ""
 
         # --- Model selector (filtered to selected provider) ---
-        provider_models = AVAILABLE_MODELS[selected_provider]
+        if selected_provider == "Ollama":
+            col1, col2 = st.columns([4, 1])
+            with col2:
+                if st.button("↻", help="Refresh Ollama models", key="_refresh_ollama"):
+                    st.session_state.ollama_models = fetch_ollama_models()
+            provider_models = st.session_state.ollama_models or []
+            if not provider_models:
+                err = st.session_state.get("_ollama_fetch_error", "")
+                with col1:
+                    msg = f"No Ollama models found. {err}" if err else "No Ollama models found. Is Ollama running?"
+                    st.warning(msg)
+        else:
+            provider_models = AVAILABLE_MODELS[selected_provider]
+
         current_model = st.session_state.selected_model
         model_index = provider_models.index(current_model) if current_model in provider_models else 0
         selected_model = st.selectbox(
             label="Model",
-            options=provider_models,
+            options=provider_models if provider_models else ["(none)"],
             index=model_index,
             key="_model_selector",
+            disabled=not provider_models,
         )
         st.session_state.selected_provider = selected_provider
         st.session_state.selected_model = selected_model

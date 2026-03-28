@@ -46,8 +46,13 @@ def load_document(file_path: Path) -> str:
         parts = []
         for sheet in wb.worksheets:
             parts.append(f"Sheet: {sheet.title}")
-            for row in sheet.iter_rows(values_only=True):
-                parts.append("\t".join("" if c is None else str(c) for c in row))
+            rows = list(sheet.iter_rows(values_only=True))
+            if not rows:
+                continue
+            headers = [str(c) if c is not None else f"col_{i}" for i, c in enumerate(rows[0])]
+            for row in rows[1:]:
+                cells = [f"{headers[i]}: {'' if c is None else c}" for i, c in enumerate(row)]
+                parts.append(", ".join(cells))
         wb.close()
         text = "\n".join(parts)
     else:
