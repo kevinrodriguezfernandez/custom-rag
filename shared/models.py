@@ -19,7 +19,10 @@ class DocumentChunk(BaseModel):
     chunk_id: str = Field(..., description="Unique identifier for this chunk")
     document_id: str = Field(..., description="Parent document identifier")
     content: str = Field(..., description="Plain-text content of the chunk")
-    metadata: dict[str, Any] = Field(default_factory=dict, description="Arbitrary metadata (source, page, etc.)")
+    metadata: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Arbitrary metadata (source, page, etc.)",
+    )
 
 
 class RetrievedChunk(BaseModel):
@@ -55,15 +58,22 @@ class ChatRequest(BaseModel):
         description="Previous conversation turns, ordered oldest-first",
     )
     api_key: str | None = Field(default=None, description="Provider API key (overrides env var)")
-    api_url: str | None = Field(default=None, description="Provider base URL override (used for Ollama)")
-    chat_id: str | None = Field(default=None, description="Active chat session ID for document scoping")
+    api_url: str | None = Field(
+        default=None, description="Provider base URL override (used for Ollama)"
+    )
+    chat_id: str | None = Field(
+        default=None, description="Active chat session ID for document scoping"
+    )
 
 
 class ChatResponse(BaseModel):
     """Response returned to the frontend after RAG pipeline execution."""
 
     answer: str = Field(..., description="LLM-generated answer")
-    sources: list[RetrievedChunk] = Field(default_factory=list, description="Chunks used to generate the answer")
+    sources: list[RetrievedChunk] = Field(
+        default_factory=list,
+        description="Chunks used to generate the answer",
+    )
     model: str | None = Field(
         default=None,
         description="OpenAI model that produced the answer, echoed from the request",
@@ -74,7 +84,9 @@ class IngestRequest(BaseModel):
     """Request to ingest a new document (metadata only; file comes via multipart)."""
 
     document_id: str = Field(..., description="Caller-supplied document identifier")
-    metadata: dict[str, Any] = Field(default_factory=dict, description="Optional metadata to attach")
+    metadata: dict[str, Any] = Field(
+        default_factory=dict, description="Optional metadata to attach"
+    )
 
 
 class IngestResponse(BaseModel):

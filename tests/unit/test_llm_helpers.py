@@ -2,7 +2,6 @@
 """Unit tests for LLM service helper functions and edge cases."""
 
 from unittest.mock import MagicMock, patch
-import pytest
 
 from api.services.llm import _build_system_prompt, _build_messages, _call_openai_compat, _call_anthropic
 from shared.models import DocumentChunk, RetrievedChunk, ChatTurn

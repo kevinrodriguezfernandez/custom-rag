@@ -70,13 +70,18 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install linters
-        run: pip install pylint flake8
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies + linters
+        run: |
+          uv sync --group dev
+          uv pip install pylint flake8
 
       - name: Run flake8
         id: flake8
         run: |
-          flake8 . --max-line-length=120 --output-file=flake8_report.txt || true
+          uv run flake8 . --max-line-length=100 --output-file=flake8_report.txt || true
           echo "output<<EOF" >> $GITHUB_OUTPUT
           cat flake8_report.txt >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
@@ -84,7 +89,7 @@ jobs:
       - name: Run pylint
         id: pylint
         run: |
-          pylint **/*.py --output-format=text > pylint_report.txt || true
+          uv run pylint api ingestion shared --output-format=text > pylint_report.txt || true
           echo "output<<EOF" >> $GITHUB_OUTPUT
           cat pylint_report.txt >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT

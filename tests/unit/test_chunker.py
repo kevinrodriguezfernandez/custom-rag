@@ -1,7 +1,6 @@
 # tests/unit/test_chunker.py
 """Unit tests for the text chunking module."""
 
-import pytest
 
 from ingestion.chunker import chunk_text
 from shared.models import DocumentChunk

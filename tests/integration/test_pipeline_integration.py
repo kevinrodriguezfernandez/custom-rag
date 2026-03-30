@@ -1,9 +1,8 @@
 # tests/integration/test_pipeline_integration.py
 """End-to-end integration tests for the complete RAG pipeline."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-import pytest
 from fastapi.testclient import TestClient
 
 from api.main import app

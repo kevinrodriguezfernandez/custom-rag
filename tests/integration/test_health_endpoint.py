@@ -1,7 +1,6 @@
 # tests/integration/test_health_endpoint.py
 """Integration tests for the /health endpoint."""
 
-import pytest
 from fastapi.testclient import TestClient
 
 from api.main import app
