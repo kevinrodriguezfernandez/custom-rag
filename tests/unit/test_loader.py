@@ -1,11 +1,14 @@
 # tests/unit/test_loader.py
 """Unit tests for the document loader module."""
 
+import io
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 import openpyxl
 import pytest
+from pypdf import PdfWriter
 
 from ingestion.loader import load_document
 
@@ -92,6 +95,23 @@ class TestLoadDocumentTextFiles:
 class TestLoadDocumentPdfFiles:
     """Tests for loading .pdf files."""
 
+    def test_load_valid_pdf_returns_string(self) -> None:
+        """Loading a valid PDF returns a string (covers the text-join path)."""
+        writer = PdfWriter()
+        writer.add_blank_page(width=612, height=792)
+        buf = io.BytesIO()
+        writer.write(buf)
+
+        with tempfile.NamedTemporaryFile(mode="wb", suffix=".pdf", delete=False) as f:
+            f.write(buf.getvalue())
+            temp_path = f.name
+
+        try:
+            result = load_document(temp_path)
+            assert isinstance(result, str)
+        finally:
+            Path(temp_path).unlink()
+
     def test_load_pdf_file_fails_gracefully(self) -> None:
         """Loading an invalid PDF file raises an error."""
         # Create a temporary file with .pdf extension but invalid PDF content
@@ -104,6 +124,34 @@ class TestLoadDocumentPdfFiles:
             # PyPDFLoader will raise an error for malformed PDFs
             with pytest.raises(Exception):  # Could be ValueError, RuntimeError, etc.
                 load_document(temp_path)
+        finally:
+            Path(temp_path).unlink()
+
+
+class TestLoadDocumentDocxFiles:
+    """Tests for .docx loading via docx2txt."""
+
+    def test_load_docx_returns_text(self) -> None:
+        """Loading a .docx file returns the text extracted by docx2txt."""
+        with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as f:
+            temp_path = f.name
+
+        try:
+            with patch("docx2txt.process", return_value="Docx content here"):
+                result = load_document(temp_path)
+            assert result == "Docx content here"
+        finally:
+            Path(temp_path).unlink()
+
+    def test_load_docx_calls_docx2txt_with_string_path(self) -> None:
+        """docx2txt.process is called with a string path, not a Path object."""
+        with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as f:
+            temp_path = f.name
+
+        try:
+            with patch("docx2txt.process", return_value="") as mock_process:
+                load_document(Path(temp_path))
+            mock_process.assert_called_once_with(str(temp_path))
         finally:
             Path(temp_path).unlink()
 
@@ -320,5 +368,23 @@ class TestLoadDocumentExcelFiles:
             assert "City: Madrid" in result
             assert "City: London" in result
             assert "City: Paris" in result
+        finally:
+            path.unlink()
+
+    def test_empty_sheet_is_skipped(self) -> None:
+        """An empty sheet (no rows) does not produce data rows in the output."""
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Empty"
+        # No rows appended — sheet is completely empty
+        tmp = tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False)
+        wb.save(tmp.name)
+        tmp.close()
+        path = Path(tmp.name)
+        try:
+            result = load_document(path)
+            # Sheet title still appears, but no data rows
+            assert "Empty" in result
+            assert "col_" not in result
         finally:
             path.unlink()
