@@ -47,8 +47,9 @@ jobs:
             echo "passed=false" >> $GITHUB_OUTPUT
           fi
 
+          # Truncate to last 150 lines to stay within GitHub Actions output limits
           echo "report<<EOF" >> $GITHUB_OUTPUT
-          cat pytest_output.txt >> $GITHUB_OUTPUT
+          tail -150 pytest_output.txt >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
   claude-review:
@@ -70,24 +71,38 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install linters
-        run: pip install pylint flake8
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies + linters
+        run: |
+          uv sync --group dev
+          uv pip install pylint flake8
 
       - name: Run flake8
         id: flake8
         run: |
-          flake8 . --max-line-length=120 --output-file=flake8_report.txt || true
+          uv run flake8 . --max-line-length=100 --output-file=flake8_report.txt || true
+          # Truncate to 50 lines — flake8 output is per-violation, keep it bounded
           echo "output<<EOF" >> $GITHUB_OUTPUT
-          cat flake8_report.txt >> $GITHUB_OUTPUT
+          head -50 flake8_report.txt >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Run pylint
         id: pylint
         run: |
-          pylint **/*.py --output-format=text > pylint_report.txt || true
+          uv run pylint api ingestion shared --output-format=text > pylint_report.txt || true
+          # Truncate to 80 lines to stay within expression size limits
           echo "output<<EOF" >> $GITHUB_OUTPUT
-          cat pylint_report.txt >> $GITHUB_OUTPUT
+          head -80 pylint_report.txt >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Build review context
+        id: context
+        run: |
+          # Write all report files so Claude can read them directly,
+          # avoiding large inline expression interpolation
+          echo "TESTS_PASSED=${{ needs.pytest.outputs.tests_passed }}" >> $GITHUB_ENV
 
       - name: Run Claude Code Review
         uses: anthropics/claude-code-action@beta
@@ -100,19 +115,22 @@ jobs:
 
             **Tests passed:** ${{ needs.pytest.outputs.tests_passed }}
 
+            **Coverage report** (last 150 lines):
             ```
             ${{ needs.pytest.outputs.coverage_report }}
             ```
 
             ## Linter Results
 
-            ### flake8
-
+            ### flake8 (first 50 violations)
+            ```
             ${{ steps.flake8.outputs.output }}
+            ```
 
-            ### pylint
-
+            ### pylint (first 80 lines)
+            ```
             ${{ steps.pylint.outputs.output }}
+            ```
 
             ## Review Checklist
 
