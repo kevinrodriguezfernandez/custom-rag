@@ -64,7 +64,10 @@ class ChatResponse(BaseModel):
 
     answer: str = Field(..., description="LLM-generated answer")
     sources: list[RetrievedChunk] = Field(default_factory=list, description="Chunks used to generate the answer")
-    model: str | None = Field(default=None, description="OpenAI model that produced the answer, echoed from the request")
+    model: str | None = Field(
+        default=None,
+        description="OpenAI model that produced the answer, echoed from the request",
+    )
 
 
 class IngestRequest(BaseModel):
