@@ -3,7 +3,6 @@
 
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from ingestion.embedder import embed_chunks, upsert_to_store
 from shared.models import DocumentChunk

@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from api.services.retriever import retrieve
-from shared.models import DocumentChunk, RetrievedChunk
+from shared.models import RetrievedChunk
 
 
 def _mock_qdrant_response(points):

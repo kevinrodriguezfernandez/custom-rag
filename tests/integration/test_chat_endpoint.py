@@ -1,13 +1,10 @@
 # tests/integration/test_chat_endpoint.py
 """Integration tests for the /chat endpoint."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-import pytest
-from fastapi.testclient import TestClient
 
-from api.main import app
-from shared.models import DocumentChunk, RetrievedChunk
+from shared.models import RetrievedChunk
 
 
 class TestChatEndpointBasic:

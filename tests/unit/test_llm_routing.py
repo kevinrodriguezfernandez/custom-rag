@@ -1,7 +1,7 @@
 # tests/unit/test_llm_routing.py
 """Unit tests for LLM provider routing logic."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 

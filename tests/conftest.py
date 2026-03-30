@@ -11,7 +11,6 @@ from shared.models import (
     ChatRequest,
     ChatTurn,
     DocumentChunk,
-    RetrievedChunk,
 )
 
 
@@ -110,5 +109,3 @@ def mock_anthropic_client() -> MagicMock:
     mock_response.content = [mock_content]
     client.messages.create.return_value = mock_response
     return client
-
-
